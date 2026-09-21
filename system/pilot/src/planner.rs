@@ -886,7 +886,8 @@ async fn compact_history(history: &mut Vec<Message>, vlm: &VlmClient) {
 /// Run one non-streaming VLM completion and return the full text (drains the
 /// stream). Returns `None` on any stream error.
 async fn collect_vlm_text(vlm: &VlmClient, messages: &[Message]) -> Option<String> {
-    let mut stream = vlm.chat_stream(messages, &[], None).await.ok()?;
+    // History compaction, not planning: no RTDL schema to enforce.
+    let mut stream = vlm.chat_stream(messages, &[], None, None).await.ok()?;
     let mut text = String::new();
     while let Some(item) = stream.next().await {
         if let Ok(VlmStreamItem::TextDelta(d)) = item {
@@ -1345,6 +1346,13 @@ pub async fn run_turn(
 
         let display_caps = build_display_capabilities(&cap_list, &non_llm_callable_contract_ids);
         let target_map = build_capability_target_map(&display_caps);
+        // Sorted so an unchanged catalog produces a byte-identical schema across
+        // turns — the map it comes from has no stable iteration order.
+        let response_schema = {
+            let mut names: Vec<String> = target_map.keys().cloned().collect();
+            names.sort();
+            rtdl_response_schema(&names)
+        };
         let protocol_prompt = rtdl_protocol(round == 0);
         let (capability_prompt, capability_cache_hit) =
             capability_prompt_cache.render(&display_caps);
@@ -1435,7 +1443,12 @@ pub async fn run_turn(
             let (content, raw_tool_calls) = loop {
                 let mut stream = match tokio::time::timeout(
                     vlm_idle_timeout(),
-                    vlm.chat_stream(&messages, &[], Some(&prompt_cache_key)),
+                    vlm.chat_stream(
+                        &messages,
+                        &[],
+                        Some(&prompt_cache_key),
+                        Some(&response_schema),
+                    ),
                 )
                 .await
                 {
@@ -2015,6 +2028,105 @@ fn build_capability_target_map(display_caps: &[DisplayCapability<'_>]) -> Capabi
         );
     }
     out
+}
+
+/// JSON Schema for one RTDL assistant response, with `do.cap` pinned to `names`.
+///
+/// Sent as the request's `response_format`, this lets the server compile the
+/// catalog into the decoding grammar: a name outside it becomes unrepresentable
+/// instead of being caught by `expand_rtdl_to_plan` after the fact. Every field
+/// the validator rejects is `required` here for the same reason, and the initial
+/// `cap`-optional draft was measurably worse — the model simply omitted the key,
+/// which fails exactly like a wrong name.
+///
+/// The plan-control ops are modelled because a control-only turn sets `rtdl` to
+/// one of them rather than to a node.
+pub(crate) fn rtdl_response_schema(names: &[String]) -> serde_json::Value {
+    let mut branches = Vec::with_capacity(3);
+    for op in ["sequence", "parallel"] {
+        branches.push(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "op": { "const": op },
+                "op_id": { "type": "integer" },
+                "description": { "type": "string", "minLength": 1 },
+                "children": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+            },
+            "required": ["op", "description", "children"],
+            "additionalProperties": false,
+        }));
+    }
+    branches.push(serde_json::json!({
+        "type": "object",
+        "properties": {
+            "op": { "const": "do" },
+            "op_id": { "type": "integer" },
+            "description": { "type": "string", "minLength": 1 },
+            "cap": { "enum": names },
+            "args": { "type": "object" },
+        },
+        "required": ["op", "description", "cap", "args"],
+        "additionalProperties": false,
+    }));
+
+    let plan_control = serde_json::json!({
+        "oneOf": [
+            {
+                "type": "object",
+                "properties": {
+                    "op": { "const": "cancel_plan" },
+                    "plan_id": { "type": "string" },
+                    "op_id": { "type": "string" },
+                },
+                "required": ["op", "plan_id"],
+                "additionalProperties": false,
+            },
+            {
+                "type": "object",
+                "properties": { "op": { "const": "cancel_all" } },
+                "required": ["op"],
+                "additionalProperties": false,
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "op": { "const": "stop_plan_at" },
+                    "plan_id": { "type": "string" },
+                    "target_op_id": { "type": "string" },
+                    "when": { "enum": ["on_enter", "on_complete"] },
+                },
+                "required": ["op", "plan_id", "target_op_id"],
+                "additionalProperties": false,
+            },
+        ]
+    });
+
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "content": { "type": "string" },
+            "rtdl_description": { "type": "string" },
+            "rtdl": { "oneOf": [{ "$ref": "#/$defs/node" }, plan_control] },
+            "task_update": {
+                "oneOf": [
+                    { "type": "null" },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "goal": { "type": "string" },
+                            "success_criterion": { "type": "string" },
+                            "status": { "enum": ["in_progress", "done"] },
+                        },
+                        "required": ["goal", "success_criterion", "status"],
+                        "additionalProperties": false,
+                    },
+                ]
+            },
+        },
+        "required": ["content", "rtdl_description", "rtdl", "task_update"],
+        "additionalProperties": false,
+        "$defs": { "node": { "oneOf": branches } },
+    })
 }
 
 /// Compact contract reminder for rounds after the first. The complete frozen
@@ -3034,8 +3146,9 @@ mod tests {
         is_control_only, is_legacy_plan_control_contract, is_terminal_executor_state,
         mixes_control_inspection_with_action, parse_meta_plan_op, parse_rtdl_assistant_response,
         parse_task_update, plan_call_signatures, record_dispatched_plan, rtdl_node_kind_name,
-        rtdl_recovery_final_text, rtdl_state_name, should_replan_after_plan_done,
-        skip_memory_prefetch, start_or_resume_task, task_is_session_end, upsert_terminal_result,
+        rtdl_recovery_final_text, rtdl_response_schema, rtdl_state_name,
+        should_replan_after_plan_done, skip_memory_prefetch, start_or_resume_task,
+        task_is_session_end, upsert_terminal_result,
     };
     use crate::pb::pilot::rtdl_node_state::RtdlNodeStateEnum;
     use crate::pb::pilot::{
@@ -4084,5 +4197,81 @@ mod tests {
         let rtdl = json!({ "op": "race", "children": [] });
         let err = expand_rtdl_to_plan(&rtdl, &targets, "p".into(), "s".into(), 0, "").unwrap_err();
         assert!(err.to_string().contains("unknown operator"));
+    }
+
+    /// Find the `oneOf` branch of the `node` definition whose `op` is `const`.
+    fn schema_branch<'a>(schema: &'a serde_json::Value, op: &str) -> &'a serde_json::Value {
+        schema["$defs"]["node"]["oneOf"]
+            .as_array()
+            .expect("node union must be an array")
+            .iter()
+            .find(|branch| branch["properties"]["op"]["const"] == op)
+            .unwrap_or_else(|| panic!("no `{op}` branch in the node union"))
+    }
+
+    #[test]
+    fn rtdl_schema_pins_cap_to_the_live_catalog() {
+        let names = vec![
+            "explore.explore_explore".to_string(),
+            "nav2.navigation_navigate".to_string(),
+        ];
+        let schema = rtdl_response_schema(&names);
+        let do_branch = schema_branch(&schema, "do");
+
+        // The whole point: the model cannot emit a name outside the catalog.
+        assert_eq!(do_branch["properties"]["cap"]["enum"], json!(names));
+        assert_eq!(
+            do_branch["additionalProperties"],
+            json!(false),
+            "an unknown key must not be storable on a `do` node"
+        );
+    }
+
+    #[test]
+    fn rtdl_schema_requires_every_field_the_validator_checks() {
+        let schema = rtdl_response_schema(&["demo.observe".to_string()]);
+
+        let do_branch = schema_branch(&schema, "do");
+        for field in ["op", "description", "cap", "args"] {
+            let required = do_branch["required"]
+                .as_array()
+                .expect("required is an array");
+            assert!(
+                required.iter().any(|f| f.as_str() == Some(field)),
+                "`do.{field}` must be required"
+            );
+        }
+
+        // A response that stops mid-JSON scores as truncated, so an empty
+        // description reaching the validator would be a schema gap.
+        for op in ["sequence", "parallel", "do"] {
+            assert_eq!(
+                schema_branch(&schema, op)["properties"]["description"]["minLength"],
+                json!(1),
+                "`{op}.description` must be non-empty"
+            );
+        }
+
+        let envelope = schema["required"]
+            .as_array()
+            .expect("envelope required is an array");
+        for key in ["content", "rtdl_description", "rtdl", "task_update"] {
+            assert!(
+                envelope.iter().any(|k| k.as_str() == Some(key)),
+                "envelope key `{key}` must be required"
+            );
+        }
+    }
+
+    #[test]
+    fn rtdl_schema_recurses_through_children() {
+        let schema = rtdl_response_schema(&["demo.observe".to_string()]);
+        for op in ["sequence", "parallel"] {
+            assert_eq!(
+                schema_branch(&schema, op)["properties"]["children"]["items"]["$ref"],
+                json!("#/$defs/node"),
+                "`{op}.children` must recurse into the node definition"
+            );
+        }
     }
 }

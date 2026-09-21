@@ -13,7 +13,7 @@ use async_openai::types::chat::{
     ChatCompletionRequestUserMessageArgs, ChatCompletionRequestUserMessageContent,
     ChatCompletionRequestUserMessageContentPart, ChatCompletionStreamOptions, ChatCompletionTool,
     ChatCompletionTools, CreateChatCompletionRequestArgs, FunctionCall, FunctionObject,
-    FunctionObjectArgs, ImageDetail, ImageUrl, ResponseFormat,
+    FunctionObjectArgs, ImageDetail, ImageUrl, ResponseFormat, ResponseFormatJsonSchema,
 };
 use futures_util::stream::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -34,9 +34,18 @@ fn rejects_optional_request_fields(status: reqwest::StatusCode, body: &str) -> b
         return false;
     }
     let body = body.to_ascii_lowercase();
-    ["stream_options", "include_usage", "prompt_cache_key"]
-        .iter()
-        .any(|field| body.contains(field))
+    [
+        "stream_options",
+        "include_usage",
+        "prompt_cache_key",
+        // Servers vary in how they name an unsupported schema-constrained
+        // response format; all of these mean "downgrade me to json_object".
+        "response_format",
+        "json_schema",
+        "structured",
+    ]
+    .iter()
+    .any(|field| body.contains(field))
 }
 
 fn open_retry_delay(
@@ -244,11 +253,17 @@ impl VlmClient {
     ///   - `ToolCall` once per accumulated function call (after the upstream
     ///     finishes streaming all argument deltas)
     ///   - one final `Finish`
+    ///
+    /// `response_schema` upgrades the request from plain JSON mode to a
+    /// schema-constrained one, so an upstream that supports it compiles the
+    /// schema into its decoding grammar. Callers that have no schema to enforce
+    /// pass `None` and get the previous `json_object` behaviour.
     pub async fn chat_stream(
         &self,
         messages: &[Message],
         tools: &[ToolDef],
         prompt_cache_key: Option<&str>,
+        response_schema: Option<&Value>,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<VlmStreamItem>> + Send>>> {
         let oai_messages = build_openai_messages(messages)?;
         let oai_tools = build_openai_tools(tools)?;
@@ -262,7 +277,7 @@ impl VlmClient {
                 include_usage: Some(true),
                 include_obfuscation: None,
             })
-            .response_format(ResponseFormat::JsonObject);
+            .response_format(response_format_for(response_schema));
         if !oai_tools.is_empty() {
             req_builder.tools(oai_tools);
         }
@@ -300,16 +315,30 @@ impl VlmClient {
                 .map(str::to_string);
             let text = response.text().await.unwrap_or_default();
             if rejects_optional_request_fields(status, &text) && !compatibility_fallback_attempted {
-                let removed = request_body.as_object_mut().is_some_and(|body| {
-                    let stream_options = body.remove("stream_options").is_some();
-                    let prompt_cache_key = body.remove("prompt_cache_key").is_some();
-                    stream_options || prompt_cache_key
-                });
-                if !removed {
+                let mut removed = false;
+                let mut downgraded = false;
+                if let Some(body) = request_body.as_object_mut() {
+                    removed |= body.remove("stream_options").is_some();
+                    removed |= body.remove("prompt_cache_key").is_some();
+                    // An upstream that takes JSON mode but not a compiled schema
+                    // still gets a usable request — just without the grammar
+                    // guarantee, which is the behaviour that shipped before.
+                    let is_schema = body
+                        .get("response_format")
+                        .and_then(|format| format.get("type"))
+                        .and_then(Value::as_str)
+                        == Some("json_schema");
+                    if is_schema {
+                        body["response_format"] = serde_json::json!({ "type": "json_object" });
+                        downgraded = true;
+                    }
+                }
+                if !removed && !downgraded {
                     bail!("open VLM chat stream: HTTP {status}: {text}");
                 }
                 robonix_scribe::warn!(
-                    "[pilot/vlm] upstream rejected optional cache/usage fields with HTTP {status}; retrying without them"
+                    "[pilot/vlm] upstream rejected optional request fields with HTTP {status}; \
+                     retrying (dropped_cache_fields={removed}, schema_downgraded={downgraded})"
                 );
                 compatibility_fallback_attempted = true;
                 continue;
@@ -416,7 +445,7 @@ impl VlmClient {
 mod tests {
     use super::{
         AccumulatedToolCall, MAX_OPEN_RETRIES, VlmStreamItem, VlmUsage, open_retry_delay,
-        parse_usage, process_stream_line, rejects_optional_request_fields,
+        parse_usage, process_stream_line, rejects_optional_request_fields, response_format_for,
     };
     use serde_json::json;
     use std::collections::BTreeMap;
@@ -508,6 +537,47 @@ mod tests {
                 cached_tokens: Some(900),
             })))
         ));
+    }
+
+    #[test]
+    fn response_format_carries_the_capability_enum_onto_the_wire() {
+        let schema = json!({
+            "$defs": { "node": { "oneOf": [
+                { "properties": { "cap": { "enum": ["demo.observe", "demo.move"] } } },
+            ] } },
+        });
+        let wire = serde_json::to_value(response_format_for(Some(&schema))).unwrap();
+
+        assert_eq!(wire["type"], "json_schema");
+        assert_eq!(wire["json_schema"]["name"], "rtdl");
+        // The enum has to survive serialization — a schema that never reaches
+        // the request body would leave the grammar unconstrained.
+        assert_eq!(
+            wire["json_schema"]["schema"]["$defs"]["node"]["oneOf"][0]["properties"]["cap"]["enum"],
+            json!(["demo.observe", "demo.move"])
+        );
+    }
+
+    #[test]
+    fn response_format_stays_json_object_without_a_schema() {
+        let wire = serde_json::to_value(response_format_for(None)).unwrap();
+        assert_eq!(wire["type"], "json_object");
+    }
+
+    #[test]
+    fn a_rejected_schema_is_downgraded_rather_than_fatal() {
+        // The fallback keys off the body, so the words a server actually uses
+        // when it refuses structured output must be among the triggers.
+        for body in [
+            r#"{"error":{"message":"response_format is not supported"}}"#,
+            r#"{"error":{"message":"json_schema type is invalid"}}"#,
+            r#"{"error":{"message":"structured outputs are disabled"}}"#,
+        ] {
+            assert!(
+                rejects_optional_request_fields(reqwest::StatusCode::BAD_REQUEST, body),
+                "should downgrade on: {body}"
+            );
+        }
     }
 }
 
@@ -684,6 +754,33 @@ fn build_openai_messages(messages: &[Message]) -> Result<Vec<ChatCompletionReque
         out.push(msg);
     }
     Ok(out)
+}
+
+/// Pick the request's `response_format`.
+///
+/// With a schema the upstream compiles it into its decoding grammar, so values
+/// outside the schema's enums are unrepresentable. Without one the request
+/// keeps the plain `json_object` contract this client has always sent.
+///
+/// `strict: false` is deliberate — the RTDL schema uses recursion, `oneOf` and
+/// `minLength`, all outside the subset OpenAI accepts under strict mode, and
+/// the servers this runs against compile the full schema anyway.
+fn response_format_for(schema: Option<&Value>) -> ResponseFormat {
+    match schema {
+        Some(schema) => ResponseFormat::JsonSchema {
+            json_schema: ResponseFormatJsonSchema {
+                name: "rtdl".to_string(),
+                description: Some(
+                    "One RTDL planning turn, with capability names drawn from \
+                     the live catalog."
+                        .to_string(),
+                ),
+                schema: Some(schema.clone()),
+                strict: Some(false),
+            },
+        },
+        None => ResponseFormat::JsonObject,
+    }
 }
 
 fn build_openai_tools(tools: &[ToolDef]) -> Result<Vec<ChatCompletionTools>> {

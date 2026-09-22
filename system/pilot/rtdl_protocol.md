@@ -162,12 +162,12 @@ foresee into ONE tree:
 
 Rules:
 1. Use ONLY capabilities listed in the Available capabilities section.
-2. In RTDL `do.cap`, copy the listed `capability_name` VERBATIM — including its provider prefix and the dot. Do NOT strip the prefix, swap in a raw `provider_id`, use a `/`-path or contract id, or invent an alias.
+2. In RTDL `do.cap`, copy the listed `capability_name` VERBATIM — it is one field, already provider-qualified and containing a dot. Do NOT strip the prefix, swap in a raw `provider_id`, use a `/`-path or contract id, or invent an alias. The `<capability_name>` in the examples below is a placeholder marking where the name goes; it is never a valid value, and emitting it literally fails.
 3. Build RTDL `do.args` from the listed `args_schema`. Do NOT invent argument keys.
 4. Do NOT invent new capabilities, robots, objects, locations, or relations.
 5. The value of `rtdl` MUST be a JSON object, not a string.
 6. Every node carries `op_id` (always `0`) and a non-empty `description`. Beyond those, do not output `out`, `plan_id`, variables, expressions, or any operator other than `sequence`, `parallel`, and `do`.
-7. If no capability call is needed this round, output an empty sequence: {"op":"sequence","op_id":0,"description":"wait","children":[]}.
+7. If no capability call is needed this round, output an empty sequence: {"op":"sequence","op_id":0,"description":"wait","children":[]}. Pair it with `task_update: null` — never restate `status: "in_progress"` next to an empty sequence, because that claims the task is advancing while nothing will run, and the turn is rejected.
 8. To learn how to use a provider, read its `CAPABILITY.md` by calling the
    `read_capability_doc` builtin with that provider's `provider_id` (the
    "Capability docs" section lists which providers have one). Before the FIRST
@@ -188,6 +188,9 @@ Rules:
     destination. `SUCCEEDED` for a pose equal to the current pose is a
     zero-distance no-op; do not describe it as movement to a different place.
 
+In every example below, `<capability_name>` stands for a name copied from the
+Available capabilities list. It is a placeholder — never emit it as a value.
+
 Example — dispatch one tree, keep the existing goal (`task_update` null):
 
 {
@@ -198,7 +201,7 @@ Example — dispatch one tree, keep the existing goal (`task_update` null):
     "op_id": 0,
     "description": "inspect the current scene",
     "children": [
-      { "op": "do", "op_id": 0, "description": "take a camera snapshot", "cap": "<provider_id>.<capability_name>", "args": {} }
+      { "op": "do", "op_id": 0, "description": "take a camera snapshot", "cap": "<capability_name>", "args": {} }
     ]
   },
   "task_update": null
@@ -215,8 +218,8 @@ tree (the steps are known up front, so do not split them across rounds):
     "op_id": 0,
     "description": "capture the scene and check battery status",
     "children": [
-      { "op": "do", "op_id": 0, "description": "capture the current scene", "cap": "<provider_id>.<capability_name>", "args": {} },
-      { "op": "do", "op_id": 0, "description": "read current battery status", "cap": "<provider_id>.<capability_name>", "args": {} }
+      { "op": "do", "op_id": 0, "description": "capture the current scene", "cap": "<capability_name>", "args": {} },
+      { "op": "do", "op_id": 0, "description": "read current battery status", "cap": "<capability_name>", "args": {} }
     ]
   },
   "task_update": {
@@ -238,7 +241,7 @@ just the observation:
     "op_id": 0,
     "description": "look around to find the door",
     "children": [
-      { "op": "do", "op_id": 0, "description": "snapshot the room to locate the door", "cap": "<provider_id>.<capability_name>", "args": {} }
+      { "op": "do", "op_id": 0, "description": "snapshot the room to locate the door", "cap": "<capability_name>", "args": {} }
     ]
   },
   "task_update": null
@@ -278,8 +281,8 @@ Example — root `parallel` (Executor runs every child concurrently and waits fo
     "op_id": 0,
     "description": "snapshot and battery check at once",
     "children": [
-      { "op": "do", "op_id": 0, "description": "grab a camera frame", "cap": "<provider_id>.<capability_name>", "args": {} },
-      { "op": "do", "op_id": 0, "description": "read the battery status", "cap": "<provider_id>.<capability_name>", "args": {} }
+      { "op": "do", "op_id": 0, "description": "grab a camera frame", "cap": "<capability_name>", "args": {} },
+      { "op": "do", "op_id": 0, "description": "read the battery status", "cap": "<capability_name>", "args": {} }
     ]
   },
   "task_update": null

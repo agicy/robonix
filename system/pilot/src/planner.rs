@@ -1560,12 +1560,21 @@ pub async fn run_turn(
 
             let raw_content = content.unwrap_or_default();
             debug!("[pilot/rtdl/raw] raw_content={raw_content}");
-            let parsed = parse_rtdl_assistant_response(&raw_content).with_context(|| {
-                format!(
-                    "parse RTDL assistant response: {}",
-                    raw_preview(&raw_content)
-                )
-            });
+            let parsed = parse_rtdl_assistant_response(&raw_content)
+                .with_context(|| {
+                    format!(
+                        "parse RTDL assistant response: {}",
+                        raw_preview(&raw_content)
+                    )
+                })
+                // Fold the empty-dispatch check into the same Result so it takes
+                // the existing retry-with-correction path rather than looping.
+                .and_then(|env| {
+                    match empty_dispatch_contradiction(&env.rtdl, env.task_update.as_ref()) {
+                        Some(error) => Err(error),
+                        None => Ok(env),
+                    }
+                });
             let RtdlEnvelope {
                 content: assistant_content,
                 rtdl_description,
@@ -2390,6 +2399,44 @@ fn build_rtdl_retry_prompt(
     p
 }
 
+/// True when the tree is a sequence with no children — the protocol's "no new
+/// call this round" form.
+fn is_empty_sequence(rtdl: &serde_json::Value) -> bool {
+    rtdl.get("op").and_then(serde_json::Value::as_str) == Some("sequence")
+        && rtdl
+            .get("children")
+            .and_then(serde_json::Value::as_array)
+            .is_none_or(|children| children.is_empty())
+}
+
+/// Reject an empty `rtdl` tree paired with a task the model just declared in
+/// progress.
+///
+/// An empty sequence legitimately means "no capability call this round" on a
+/// purely conversational turn — measured responses there carry
+/// `task_update: null`. Pairing it with `status: "in_progress"` is a
+/// contradiction: the model says the task is underway while nothing will run, so
+/// the turn dispatches nothing, does not end (`TaskState::is_done` stays false)
+/// and the planner re-runs on the same prompt. Measured on MiniCPM-2B, which
+/// answers "拍一张当前画面" that way.
+///
+/// Returning an error routes it into the existing retry-with-correction path
+/// rather than looping.
+fn empty_dispatch_contradiction(
+    rtdl: &serde_json::Value,
+    task_update: Option<&TaskState>,
+) -> Option<anyhow::Error> {
+    let state = task_update?;
+    if state.status != "in_progress" || !is_empty_sequence(rtdl) {
+        return None;
+    }
+    Some(anyhow::anyhow!(
+        "`rtdl` is an empty sequence while `task_update.status` is `in_progress`: \
+         the task cannot advance without a capability call. Dispatch the next step, \
+         or mark the task `done` if it is already complete."
+    ))
+}
+
 /// A single empty-sequence root plan, used as the no-op plan when a turn ends in
 /// RTDL recovery. Carries non-empty `op_id`/`description` so executor's
 /// `validate_plan` accepts it.
@@ -3141,14 +3188,14 @@ mod tests {
         RTDL_PARALLEL, RTDL_PROTOCOL_REMINDER, RTDL_SEQUENCE, TaskState, TreeMeta, TreeStep,
         append_steer, apply_task_update, build_capability_target_map, build_display_capabilities,
         build_executor_active_block, build_forest_block, compact_tool_result,
-        configured_vlm_idle_timeout, duplicate_in_flight_signature, expand_rtdl_to_plan,
-        extract_json_object, feed_results_into_history, format_plan_summary, invalid_cancel_target,
-        is_control_only, is_legacy_plan_control_contract, is_terminal_executor_state,
-        mixes_control_inspection_with_action, parse_meta_plan_op, parse_rtdl_assistant_response,
-        parse_task_update, plan_call_signatures, record_dispatched_plan, rtdl_node_kind_name,
-        rtdl_recovery_final_text, rtdl_response_schema, rtdl_state_name,
-        should_replan_after_plan_done, skip_memory_prefetch, start_or_resume_task,
-        task_is_session_end, upsert_terminal_result,
+        configured_vlm_idle_timeout, duplicate_in_flight_signature, empty_dispatch_contradiction,
+        expand_rtdl_to_plan, extract_json_object, feed_results_into_history, format_plan_summary,
+        invalid_cancel_target, is_control_only, is_legacy_plan_control_contract,
+        is_terminal_executor_state, mixes_control_inspection_with_action, parse_meta_plan_op,
+        parse_rtdl_assistant_response, parse_task_update, plan_call_signatures,
+        record_dispatched_plan, rtdl_node_kind_name, rtdl_recovery_final_text,
+        rtdl_response_schema, rtdl_state_name, should_replan_after_plan_done, skip_memory_prefetch,
+        start_or_resume_task, task_is_session_end, upsert_terminal_result,
     };
     use crate::pb::pilot::rtdl_node_state::RtdlNodeStateEnum;
     use crate::pb::pilot::{
@@ -4261,6 +4308,47 @@ mod tests {
                 "envelope key `{key}` must be required"
             );
         }
+    }
+
+    fn in_progress_task(goal: &str) -> TaskState {
+        TaskState {
+            goal: goal.to_string(),
+            success_criterion: "done".to_string(),
+            status: "in_progress".to_string(),
+        }
+    }
+
+    #[test]
+    fn dispatching_nothing_while_declaring_progress_is_rejected() {
+        // Measured: MiniCPM-2B answers "拍一张当前画面" with an empty sequence and
+        // `status: in_progress`. Nothing runs, the turn does not end, and the
+        // loop replans on the same prompt forever.
+        let rtdl =
+            json!({ "op": "sequence", "op_id": 0, "description": "take a photo", "children": [] });
+        let err = empty_dispatch_contradiction(&rtdl, Some(&in_progress_task("take a photo")))
+            .expect("an empty dispatch under an in-progress task must be rejected");
+        assert!(err.to_string().contains("empty"));
+    }
+
+    #[test]
+    fn dispatching_nothing_on_a_conversational_turn_is_allowed() {
+        // "你好，请介绍一下你自己" legitimately needs no capability call; measured
+        // responses there carry `task_update: null`.
+        let rtdl = json!({ "op": "sequence", "op_id": 0, "description": "chat", "children": [] });
+        assert!(empty_dispatch_contradiction(&rtdl, None).is_none());
+
+        let mut done = in_progress_task("chat");
+        done.status = "done".to_string();
+        assert!(empty_dispatch_contradiction(&rtdl, Some(&done)).is_none());
+    }
+
+    #[test]
+    fn any_tree_that_dispatches_work_is_never_rejected() {
+        let rtdl = json!({
+            "op": "sequence", "op_id": 0, "description": "snapshot",
+            "children": [{ "op": "do", "op_id": 0, "description": "snap", "cap": "demo.observe", "args": {} }],
+        });
+        assert!(empty_dispatch_contradiction(&rtdl, Some(&in_progress_task("snapshot"))).is_none());
     }
 
     #[test]

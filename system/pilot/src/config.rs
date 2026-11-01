@@ -195,10 +195,10 @@ impl PilotConfig {
                 );
             }
             let api_key = api_key_for(&target);
-            if api_key.is_empty() {
+            if target.api_key_env.is_some() && api_key.is_empty() {
                 bail!(
-                    "read {} for catalog target {}",
-                    target.api_key_env,
+                    "missing {} for catalog target {}",
+                    target.api_key_env.as_deref().unwrap_or(""),
                     target.id
                 );
             }

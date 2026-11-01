@@ -58,8 +58,8 @@ def main() -> int:
     target = targets[0]
     print(f"resolved: {target.id} ({target.base_url}, model={target.model})")
 
-    key = os.environ.get(target.api_key_env)
-    if not key:
+    key = os.environ.get(target.api_key_env) if target.api_key_env else ""
+    if target.api_key_env is not None and not key:
         print(
             f"{target.api_key_env} is not set; the resolver worked but the "
             "direct call needs a provider key",

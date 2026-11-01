@@ -111,10 +111,10 @@ def resolve_from_env(
     """Resolve one target from the deployment catalog, or None when disabled.
 
     Consumers call this while building their configuration.  When ``env`` is
-    unset they keep the legacy ``VLM_*``/manifest settings.  A target whose
-    ``api_key_env`` is present wins over an earlier target with a missing key;
-    if no key is set the first target is returned so the consumer's existing
-    "no key -> inactive" path still applies.
+    unset they keep the legacy ``VLM_*``/manifest settings.  A target with no
+    ``api_key_env`` needs no credential and stays eligible.  A target whose
+    ``api_key_env`` is set but missing from the environment is skipped; if no
+    target is usable, the error names the variables to set.
 
     The catalog is read once per process; restart the consumer to pick up an
     edited catalog.
@@ -127,14 +127,24 @@ def resolve_from_env(
         raise RuntimeError(
             f"no model in {path} satisfies {sorted(requirements.features)}"
         )
-    for target in targets:
-        if os.environ.get(target.api_key_env):
-            return target
-    return targets[0]
+    usable = [
+        target
+        for target in targets
+        if target.api_key_env is None or os.environ.get(target.api_key_env)
+    ]
+    if not usable:
+        missing = sorted({target.api_key_env for target in targets if target.api_key_env})
+        raise RuntimeError(
+            f"no usable model in {path} for {sorted(requirements.features)}; "
+            f"set one of {', '.join(missing)}"
+        )
+    return usable[0]
 
 
 def api_key_for(target: ModelSpec) -> str:
-    """The key the consumer must send, or an empty string when unset."""
+    """The key the consumer must send, or an empty string when unset/keyless."""
+    if target.api_key_env is None:
+        return ""
     return os.environ.get(target.api_key_env, "")
 
 

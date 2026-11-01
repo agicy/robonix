@@ -24,7 +24,8 @@ class ModelSpec:
     provider: str
     base_url: str
     model: str
-    api_key_env: str
+    # None means the endpoint needs no credential (e.g. a local vLLM/Ollama).
+    api_key_env: str | None = None
     features: dict[str, bool] = field(default_factory=dict)
     context: int | None = None
     latency_p95_ms: float | None = None
@@ -45,7 +46,7 @@ class ModelSpec:
             provider=_required_str(data, "provider"),
             base_url=_required_str(data, "base_url").rstrip("/"),
             model=_required_str(data, "model"),
-            api_key_env=_required_str(data, "api_key_env"),
+            api_key_env=_optional_str(data, "api_key_env"),
             features=_features(data.get("features")),
             context=_optional_positive_int(data.get("context"), "context"),
             latency_p95_ms=_optional_non_negative(data.get("latency_p95_ms"),
@@ -120,6 +121,15 @@ def _required_str(data: dict[str, Any], key: str) -> str:
     value = data.get(key)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"model.{key} is required")
+    return value.strip()
+
+
+def _optional_str(data: dict[str, Any], key: str) -> str | None:
+    value = data.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"model.{key} must be a non-empty string when set")
     return value.strip()
 
 

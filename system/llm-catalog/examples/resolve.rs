@@ -39,7 +39,11 @@ fn main() -> anyhow::Result<()> {
     for target in catalog.resolve(&requirements) {
         println!(
             "{}  {}  {}  env={}  downgraded={}",
-            target.id, target.base_url, target.model, target.api_key_env, target.downgraded
+            target.id,
+            target.base_url,
+            target.model,
+            target.api_key_env.as_deref().unwrap_or("<none>"),
+            target.downgraded
         );
     }
     Ok(())

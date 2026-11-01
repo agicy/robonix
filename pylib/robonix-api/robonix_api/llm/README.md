@@ -34,16 +34,15 @@ models:
 
 `api_key_env` is the name of an environment variable, never the key. The
 resolver returns it so the consumer can read the key locally and connect
-directly.
+directly. Omit it for a keyless endpoint such as a local vLLM/Ollama server.
 
 `catalog.example.yaml` is a complete example.
 
 ## Python
 
 ```python
-import os
 from openai import OpenAI
-from robonix_api.llm import ModelCatalog, Requirements
+from robonix_api.llm import ModelCatalog, Requirements, api_key_for
 
 catalog = ModelCatalog.load("catalog.example.yaml")
 targets = catalog.resolve(
@@ -58,7 +57,7 @@ target = targets[0]
 # The consumer's own OpenAI-compatible client connects directly.
 client = OpenAI(
     base_url=target.base_url,
-    api_key=os.environ[target.api_key_env],
+    api_key=api_key_for(target),   # "" for a keyless local endpoint
 )
 client.chat.completions.create(model=target.model, messages=...)
 ```
@@ -88,18 +87,19 @@ else:
     ...                             # keep the consumer's legacy VLM_* config
 ```
 
-`resolve_from_env` reads `ROBONIX_LLM_CATALOG` and returns the first target
-whose `api_key_env` is present (falling back to the first target when no key is
-set, so the consumer's existing "no key -> inactive" path still applies). When
-the variable is unset it returns `None`, which keeps the legacy configuration.
-The catalog is read once per process; restart the consumer after editing it.
+`resolve_from_env` reads `ROBONIX_LLM_CATALOG` and returns the first usable
+target. Targets without `api_key_env` need no credential; targets that name an
+unset key are skipped. If no target is usable, it raises an error naming the
+missing variables. When the catalog variable is unset it returns `None`, which
+keeps the legacy configuration. The catalog is read once per process; restart
+the consumer after editing it.
 
 ### Deployment
 
 Set `ROBONIX_LLM_CATALOG` to an absolute catalog path and export the
-`api_key_env` of every target the deployment may use. Consumers without the
-variable keep their legacy configuration, so the migration can be rolled out
-one service at a time.
+`api_key_env` of every target the deployment may use (keyless local targets
+need no variable). Consumers without the variable keep their legacy
+configuration, so the migration can be rolled out one service at a time.
 
 Scene runs in a container: its start script mounts the catalog at the same
 absolute path and forwards `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`,

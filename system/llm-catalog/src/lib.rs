@@ -24,7 +24,9 @@ pub struct ModelSpec {
     /// Model name sent in the request body.
     pub model: String,
     /// Name of the environment variable holding the API key; never the key.
-    pub api_key_env: String,
+    /// `None` means the endpoint needs no credential, e.g. local vLLM/Ollama.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key_env: Option<String>,
     /// Feature flags such as `vision`, `tools` or `json_schema`.
     #[serde(default)]
     pub features: BTreeMap<String, bool>,
@@ -184,12 +186,18 @@ impl ModelCatalog {
                 ("provider", &model.provider),
                 ("base_url", &model.base_url),
                 ("model", &model.model),
-                ("api_key_env", &model.api_key_env),
                 ("protocol", &model.protocol),
             ] {
                 if value.trim().is_empty() {
                     bail!("model.{field} must not be empty");
                 }
+            }
+            if model
+                .api_key_env
+                .as_deref()
+                .is_some_and(|name| name.trim().is_empty())
+            {
+                bail!("model {:?}.api_key_env must not be empty", model.id);
             }
             if !seen.insert(model.id.as_str()) {
                 bail!("duplicate model id {:?}", model.id);
@@ -237,10 +245,10 @@ fn estimated_cost(model: &ModelSpec, req: &Requirements) -> f64 {
 
 /// Resolve one target from `ROBONIX_LLM_CATALOG`, or `None` when unset.
 ///
-/// A target whose `api_key_env` is present wins over an earlier target with a
-/// missing key; if no key is set the first target is returned so the caller's
-/// existing "no key -> inactive" path still applies. The catalog is read on
-/// each call; callers that resolve once keep the result.
+/// A target with no `api_key_env` needs no credential and stays eligible. A
+/// target whose `api_key_env` is set but missing from the environment is
+/// skipped; if no target is usable, the error names the variables to set. The
+/// catalog is read on each call; callers that resolve once keep the result.
 pub fn resolve_from_env(requirements: &Requirements) -> Result<Option<ModelSpec>> {
     let path = std::env::var("ROBONIX_LLM_CATALOG").unwrap_or_default();
     let path = path.trim();
@@ -255,16 +263,37 @@ pub fn resolve_from_env(requirements: &Requirements) -> Result<Option<ModelSpec>
             requirements.features.join(",")
         );
     }
-    for target in &targets {
-        if std::env::var(&target.api_key_env).is_ok_and(|value| !value.is_empty()) {
-            return Ok(Some(target.clone()));
-        }
-    }
-    Ok(targets.into_iter().next())
+    let usable: Vec<&ModelSpec> = targets
+        .iter()
+        .filter(|target| {
+            target
+                .api_key_env
+                .as_deref()
+                .is_none_or(|name| std::env::var(name).is_ok_and(|value| !value.is_empty()))
+        })
+        .collect();
+    let Some(target) = usable.first() else {
+        let mut missing: Vec<&str> = targets
+            .iter()
+            .filter_map(|target| target.api_key_env.as_deref())
+            .collect();
+        missing.sort_unstable();
+        missing.dedup();
+        bail!(
+            "no usable model in {path} for {}; set one of {}",
+            requirements.features.join(","),
+            missing.join(", ")
+        );
+    };
+    Ok(Some((*target).clone()))
 }
 
-/// The key the consumer must send, or an empty string when unset.
+/// The key the consumer must send, or an empty string when unset/keyless.
 #[must_use]
 pub fn api_key_for(target: &ModelSpec) -> String {
-    std::env::var(&target.api_key_env).unwrap_or_default()
+    target
+        .api_key_env
+        .as_deref()
+        .and_then(|name| std::env::var(name).ok())
+        .unwrap_or_default()
 }

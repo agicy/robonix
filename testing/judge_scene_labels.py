@@ -105,7 +105,7 @@ def _judge_config(model: str) -> tuple[str, str, str]:
         raise SystemExit(f"model catalog: {exc}") from exc
     if target is not None:
         api_key = api_key_for(target)
-        if not api_key:
+        if target.api_key_env is not None and not api_key:
             raise SystemExit(
                 f"{target.api_key_env} is required for catalog target {target.id}"
             )

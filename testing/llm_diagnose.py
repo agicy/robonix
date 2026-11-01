@@ -108,7 +108,7 @@ def main() -> int:
     provider = "deepseek"
     base_url = args.base_url
     model = args.model
-    api_key_env = args.api_key_env
+    api_key_env: str | None = args.api_key_env
     try:
         target = resolve_from_env(Requirements(features=("json_object",)))
     except RuntimeError as exc:
@@ -120,9 +120,9 @@ def main() -> int:
         model = target.model
         api_key_env = target.api_key_env
 
-    api_key = os.environ.get(api_key_env, "")
+    api_key = os.environ.get(api_key_env, "") if api_key_env else ""
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    if not api_key:
+    if api_key_env is not None and not api_key:
         args.out.write_text(
             json.dumps(
                 {

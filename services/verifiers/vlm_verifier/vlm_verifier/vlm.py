@@ -72,7 +72,7 @@ class VlmConfig:
                     "the verifier only speaks openai-chat"
                 )
             api_key = api_key_for(target)
-            if not api_key:
+            if target.api_key_env is not None and not api_key:
                 raise ValueError(
                     f"{target.api_key_env} is required for catalog target {target.id!r}"
                 )

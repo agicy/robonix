@@ -76,15 +76,52 @@ class ResolveFromEnvTests(unittest.TestCase):
         finally:
             directory.cleanup()
 
-    def test_missing_keys_still_return_the_first_target(self):
+    def test_missing_keys_are_an_error(self):
         directory, path = _catalog(MODELS)
         try:
             with patch.dict(
                 os.environ, {"ROBONIX_LLM_CATALOG": str(path)}, clear=True
             ):
+                with self.assertRaises(RuntimeError) as ctx:
+                    resolve_from_env(Requirements(features=("vision",)))
+            self.assertIn("FAST_KEY", str(ctx.exception))
+            self.assertIn("SLOW_KEY", str(ctx.exception))
+        finally:
+            directory.cleanup()
+
+    def test_keyless_target_is_usable_without_a_key(self):
+        model = dict(MODELS[0])
+        model["id"] = "local/keyless"
+        del model["api_key_env"]
+        directory, path = _catalog([model])
+        try:
+            with patch.dict(
+                os.environ, {"ROBONIX_LLM_CATALOG": str(path)}, clear=True
+            ):
                 target = resolve_from_env(Requirements(features=("vision",)))
-            self.assertEqual(target.id, "fast/model")
-            self.assertEqual(api_key_for(target), "")
+                key = api_key_for(target)
+            self.assertEqual(target.id, "local/keyless")
+            self.assertEqual(key, "")
+        finally:
+            directory.cleanup()
+
+    def test_keyless_target_beats_a_slower_keyed_target(self):
+        keyless = dict(MODELS[0])
+        keyless["id"] = "local/keyless"
+        keyless["latency_p95_ms"] = 100
+        del keyless["api_key_env"]
+        keyed = dict(MODELS[1])
+        keyed["id"] = "cloud/keyed"
+        keyed["latency_p95_ms"] = 2000
+        directory, path = _catalog([keyless, keyed])
+        try:
+            with patch.dict(
+                os.environ,
+                {"ROBONIX_LLM_CATALOG": str(path), "SLOW_KEY": "secret"},
+                clear=True,
+            ):
+                target = resolve_from_env(Requirements(features=("vision",)))
+            self.assertEqual(target.id, "local/keyless")
         finally:
             directory.cleanup()
 

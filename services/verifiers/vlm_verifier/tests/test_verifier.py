@@ -119,7 +119,7 @@ class ParsingTests(unittest.TestCase):
                                 "base_url": "http://127.0.0.1:9999/v1/",
                                 "model": "test-vl",
                                 "api_key_env": "TEST_KEY",
-                                "capabilities": {"vision": True},
+                                "features": {"vision": True},
                                 "latency_p95_ms": 100,
                             }
                         ]

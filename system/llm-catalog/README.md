@@ -1,18 +1,18 @@
 # robonix-llm-catalog
 
-Rust counterpart of `pylib/robonix-api/robonix_api/llm`: load a capability catalog, resolve a
+Rust counterpart of `pylib/robonix-api/robonix_api/llm`: load a feature catalog, resolve a
 set of requirements to model endpoints, and connect directly. The crate does
 not proxy traffic, track health or manage keys.
 
 ```rust
 use robonix_llm_catalog::{
-    Catalog, Requirements, api_key_for, resolve_from_env,
+    ModelCatalog, Requirements, api_key_for, resolve_from_env,
 };
 
-let catalog = Catalog::load("catalog.example.yaml".as_ref())?;
+let catalog = ModelCatalog::load("catalog.example.yaml".as_ref())?;
 catalog.model("deepseek/flash")?; // lookup by id
 let targets = catalog.resolve(&Requirements {
-    capabilities: vec!["vision".into(), "tools".into()],
+    features: vec!["vision".into(), "tools".into()],
     input_tokens: 12_000,
     max_output_tokens: 512,
     ..Requirements::default()

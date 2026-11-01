@@ -3,14 +3,14 @@
 
 use std::path::Path;
 
-use robonix_llm_catalog::{Catalog, Requirements};
+use robonix_llm_catalog::{ModelCatalog, Requirements};
 use serde::Deserialize;
 
 /// Shared contract file: one catalog and the cases that exercise it.
 #[derive(Debug, Deserialize)]
 struct Fixture {
-    /// Catalog used by every case in the file.
-    catalog: Catalog,
+    /// ModelCatalog used by every case in the file.
+    catalog: ModelCatalog,
     /// Ordered cases with their expected results.
     cases: Vec<Case>,
 }
@@ -20,7 +20,7 @@ struct Fixture {
 struct Case {
     /// Human-readable name used in assertion messages.
     name: String,
-    /// Capability and budget inputs for this case.
+    /// Feature and budget inputs for this case.
     requirements: CaseRequirements,
     /// Expected model ids in preference order.
     expected_ids: Vec<String>,
@@ -34,7 +34,7 @@ struct Case {
 struct CaseRequirements {
     /// Capabilities the model must support.
     #[serde(default)]
-    capabilities: Vec<String>,
+    features: Vec<String>,
     /// Estimated input tokens.
     #[serde(default)]
     input_tokens: u64,
@@ -67,7 +67,7 @@ fn shared_resolve_cases() {
     let fixture: Fixture = serde_json::from_str(&text).expect("parse resolve_cases.json");
     for case in &fixture.cases {
         let requirements = Requirements {
-            capabilities: case.requirements.capabilities.clone(),
+            features: case.requirements.features.clone(),
             input_tokens: case.requirements.input_tokens,
             max_output_tokens: case.requirements.max_output_tokens,
             max_latency_ms: case.requirements.max_latency_ms,
@@ -91,7 +91,7 @@ fn shared_resolve_cases() {
 fn loads_the_example_yaml_catalog() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../pylib/robonix-api/robonix_api/llm/catalog.example.yaml");
-    let catalog = Catalog::load(&path).expect("load catalog.example.yaml");
+    let catalog = ModelCatalog::load(&path).expect("load catalog.example.yaml");
     assert_eq!(catalog.models.len(), 3);
     let deepseek = catalog
         .models
@@ -107,7 +107,7 @@ fn loads_the_example_yaml_catalog() {
 fn looks_up_a_model_by_id() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../pylib/robonix-api/robonix_api/llm/catalog.example.yaml");
-    let catalog = Catalog::load(&path).expect("load catalog.example.yaml");
+    let catalog = ModelCatalog::load(&path).expect("load catalog.example.yaml");
     let deepseek = catalog.model("deepseek/flash").expect("deepseek entry");
     assert_eq!(deepseek.provider, "deepseek");
     assert!(catalog.model("absent").is_err());

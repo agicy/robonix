@@ -3,7 +3,7 @@ import json
 import unittest
 from pathlib import Path
 
-from robonix_api.llm import Catalog, Requirements
+from robonix_api.llm import ModelCatalog, Requirements
 
 ROOT = Path(__file__).resolve().parent.parent
 CONTRACT = json.loads(
@@ -15,12 +15,12 @@ CONTRACT = json.loads(
 
 class ContractTests(unittest.TestCase):
     def test_shared_resolve_cases(self):
-        catalog = Catalog.from_dict(CONTRACT["catalog"])
+        catalog = ModelCatalog.from_dict(CONTRACT["catalog"])
         for case in CONTRACT["cases"]:
             with self.subTest(case=case["name"]):
                 raw = case["requirements"]
                 requirements = Requirements(
-                    capabilities=tuple(raw.get("capabilities", ())),
+                    features=tuple(raw.get("features", ())),
                     input_tokens=raw.get("input_tokens", 0),
                     max_output_tokens=raw.get("max_output_tokens", 0),
                     max_latency_ms=raw.get("max_latency_ms"),

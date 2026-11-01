@@ -29,7 +29,7 @@ log = logging.getLogger("scribe_mem")
 def _vlm_config() -> dict:
     try:
         target = resolve_from_env(
-            Requirements(capabilities=("vision",), max_output_tokens=256)
+            Requirements(features=("vision",), max_output_tokens=256)
         )
     except RuntimeError as exc:
         log.warning("observe: capability catalog: %s", exc)

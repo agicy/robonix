@@ -38,7 +38,7 @@ def _llm_config() -> dict:
     """Resolve LLM endpoint from env vars with standard fallbacks."""
     try:
         target = resolve_from_env(
-            Requirements(capabilities=("json_object",), max_output_tokens=512)
+            Requirements(features=("json_object",), max_output_tokens=512)
         )
     except RuntimeError as exc:
         log.warning("llm_search: capability catalog: %s", exc)

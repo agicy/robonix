@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MulanPSL-2.0
-//! Capability catalog and model resolver for Robonix consumers.
+//! Feature catalog and model resolver for Robonix consumers.
 //!
 //! The catalog is the single source of truth for what a model can do and how
-//! to connect to it.  `Catalog::resolve` filters by capability and request
+//! to connect to it.  `ModelCatalog::resolve` filters by feature and request
 //! budgets and returns every matching model in preference order; the consumer
 //! connects to the first one directly.  This crate does not proxy traffic,
 //! track health or manage keys.
@@ -25,9 +25,9 @@ pub struct ModelSpec {
     pub model: String,
     /// Name of the environment variable holding the API key; never the key.
     pub api_key_env: String,
-    /// Capability flags such as `vision`, `tools` or `json_schema`.
+    /// Feature flags such as `vision`, `tools` or `json_schema`.
     #[serde(default)]
-    pub capabilities: BTreeMap<String, bool>,
+    pub features: BTreeMap<String, bool>,
     /// Context window in tokens; `None` means the catalog sets no limit.
     #[serde(default)]
     pub context: Option<u64>,
@@ -43,7 +43,7 @@ pub struct ModelSpec {
     /// Wire protocol the consumer must speak; currently `openai-chat`.
     #[serde(default = "default_protocol")]
     pub protocol: String,
-    /// Set by [`Catalog::resolve`] when the request asked for `json_schema`
+    /// Set by [`ModelCatalog::resolve`] when the request asked for `json_schema`
     /// but only a `json_object` model fit.  Never read from the catalog file.
     #[serde(skip)]
     pub downgraded: bool,
@@ -55,14 +55,14 @@ fn default_protocol() -> String {
 
 impl ModelSpec {
     #[must_use]
-    pub fn supports(&self, capability: &str) -> bool {
-        self.capabilities.get(capability).copied().unwrap_or(false)
+    pub fn supports(&self, feature: &str) -> bool {
+        self.features.get(feature).copied().unwrap_or(false)
     }
 }
 
 /// A catalog file: a non-empty list of model endpoints.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Catalog {
+pub struct ModelCatalog {
     /// Every model endpoint the deployment may use; ids are unique.
     pub models: Vec<ModelSpec>,
 }
@@ -72,7 +72,7 @@ pub struct Catalog {
 #[derive(Debug, Clone)]
 pub struct Requirements {
     /// Capabilities the model must support; all of them are required.
-    pub capabilities: Vec<String>,
+    pub features: Vec<String>,
     /// Estimated input tokens for the request.
     pub input_tokens: u64,
     /// Maximum tokens the model may generate.
@@ -88,7 +88,7 @@ pub struct Requirements {
 impl Default for Requirements {
     fn default() -> Self {
         Self {
-            capabilities: Vec::new(),
+            features: Vec::new(),
             input_tokens: 0,
             max_output_tokens: 0,
             max_latency_ms: None,
@@ -98,7 +98,7 @@ impl Default for Requirements {
     }
 }
 
-impl Catalog {
+impl ModelCatalog {
     /// Load a JSON or YAML catalog, chosen by file extension.
     pub fn load(path: &Path) -> Result<Self> {
         let text = std::fs::read_to_string(path)
@@ -132,7 +132,7 @@ impl Catalog {
     /// every returned model then carries `downgraded = true`.
     #[must_use]
     pub fn resolve(&self, requirements: &Requirements) -> Vec<ModelSpec> {
-        let mut required: BTreeSet<String> = requirements.capabilities.iter().cloned().collect();
+        let mut required: BTreeSet<String> = requirements.features.iter().cloned().collect();
         let mut downgraded = false;
 
         if required.contains("json_schema")
@@ -209,7 +209,7 @@ impl Catalog {
 }
 
 fn fits(model: &ModelSpec, required: &BTreeSet<String>, req: &Requirements) -> bool {
-    if !required.iter().all(|capability| model.supports(capability)) {
+    if !required.iter().all(|feature| model.supports(feature)) {
         return false;
     }
     let wanted_tokens = req.input_tokens.saturating_add(req.max_output_tokens);
@@ -247,12 +247,12 @@ pub fn resolve_from_env(requirements: &Requirements) -> Result<Option<ModelSpec>
     if path.is_empty() {
         return Ok(None);
     }
-    let catalog = Catalog::load(Path::new(path))?;
+    let catalog = ModelCatalog::load(Path::new(path))?;
     let targets = catalog.resolve(requirements);
     if targets.is_empty() {
         bail!(
             "no model in {path} satisfies {}",
-            requirements.capabilities.join(",")
+            requirements.features.join(",")
         );
     }
     for target in &targets {

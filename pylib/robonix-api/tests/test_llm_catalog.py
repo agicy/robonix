@@ -4,15 +4,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from robonix_api.llm import Catalog
+from robonix_api.llm import ModelCatalog
 
 ROOT = Path(__file__).resolve().parent.parent
 LLM = ROOT / "robonix_api" / "llm"
 
 
-class CatalogTests(unittest.TestCase):
+class ModelCatalogTests(unittest.TestCase):
     def test_load_example_yaml(self):
-        catalog = Catalog.load(LLM / "catalog.example.yaml")
+        catalog = ModelCatalog.load(LLM / "catalog.example.yaml")
         self.assertEqual(len(catalog.models), 3)
         deepseek = catalog.model("deepseek/flash")
         self.assertEqual(deepseek.base_url, "https://api.deepseek.com")
@@ -28,7 +28,7 @@ class CatalogTests(unittest.TestCase):
                     "base_url": "http://127.0.0.1:8000/v1",
                     "model": "test",
                     "api_key_env": "VLLM_API_KEY",
-                    "capabilities": {"vision": True},
+                    "features": {"vision": True},
                     "context": 8192,
                 }
             ]
@@ -36,7 +36,7 @@ class CatalogTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "catalog.json"
             path.write_text(json.dumps(data), encoding="utf-8")
-            catalog = Catalog.load(path)
+            catalog = ModelCatalog.load(path)
         self.assertEqual(catalog.models[0].id, "local/test")
         self.assertEqual(catalog.models[0].protocol, "openai-chat")
 
@@ -60,15 +60,15 @@ class CatalogTests(unittest.TestCase):
             ]
         }
         with self.assertRaises(ValueError):
-            Catalog.from_dict(data)
+            ModelCatalog.from_dict(data)
 
     def test_rejects_missing_field(self):
         with self.assertRaises(ValueError):
-            Catalog.from_dict(
+            ModelCatalog.from_dict(
                 {"models": [{"id": "x", "provider": "vllm", "base_url": "http://x"}]}
             )
 
     def test_unknown_model_is_an_error(self):
-        catalog = Catalog.load(LLM / "catalog.example.yaml")
+        catalog = ModelCatalog.load(LLM / "catalog.example.yaml")
         with self.assertRaises(ValueError):
             catalog.model("absent")

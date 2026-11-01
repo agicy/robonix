@@ -110,9 +110,9 @@ def main() -> int:
     model = args.model
     api_key_env = args.api_key_env
     try:
-        target = resolve_from_env(Requirements(capabilities=("json_object",)))
+        target = resolve_from_env(Requirements(features=("json_object",)))
     except RuntimeError as exc:
-        print(f"warning: capability catalog: {exc}", file=sys.stderr)
+        print(f"warning: model catalog: {exc}", file=sys.stderr)
         target = None
     if target is not None:
         provider = target.provider

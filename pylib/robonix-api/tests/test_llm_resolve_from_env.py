@@ -16,7 +16,7 @@ MODELS = [
         "base_url": "http://127.0.0.1:8000/v1",
         "model": "fast",
         "api_key_env": "FAST_KEY",
-        "capabilities": {"vision": True},
+        "features": {"vision": True},
         "latency_p95_ms": 100,
     },
     {
@@ -25,7 +25,7 @@ MODELS = [
         "base_url": "http://127.0.0.1:8001/v1",
         "model": "slow",
         "api_key_env": "SLOW_KEY",
-        "capabilities": {"vision": True},
+        "features": {"vision": True},
         "latency_p95_ms": 200,
     },
 ]
@@ -41,7 +41,7 @@ def _catalog(models):
 class ResolveFromEnvTests(unittest.TestCase):
     def test_disabled_without_catalog_env(self):
         with patch.dict(os.environ, {}, clear=True):
-            self.assertIsNone(resolve_from_env(Requirements(capabilities=("vision",))))
+            self.assertIsNone(resolve_from_env(Requirements(features=("vision",))))
 
     def test_prefers_a_target_whose_key_is_set(self):
         directory, path = _catalog(MODELS)
@@ -52,7 +52,7 @@ class ResolveFromEnvTests(unittest.TestCase):
                     {"ROBONIX_LLM_CATALOG": str(path), "SLOW_KEY": "secret"},
                     clear=True,
                 ):
-                    target = resolve_from_env(Requirements(capabilities=("vision",)))
+                    target = resolve_from_env(Requirements(features=("vision",)))
                     key = api_key_for(target)
             self.assertEqual(target.id, "slow/model")
             self.assertEqual(key, "secret")
@@ -71,7 +71,7 @@ class ResolveFromEnvTests(unittest.TestCase):
                 },
                 clear=True,
             ):
-                target = resolve_from_env(Requirements(capabilities=("vision",)))
+                target = resolve_from_env(Requirements(features=("vision",)))
             self.assertEqual(target.id, "fast/model")
         finally:
             directory.cleanup()
@@ -82,7 +82,7 @@ class ResolveFromEnvTests(unittest.TestCase):
             with patch.dict(
                 os.environ, {"ROBONIX_LLM_CATALOG": str(path)}, clear=True
             ):
-                target = resolve_from_env(Requirements(capabilities=("vision",)))
+                target = resolve_from_env(Requirements(features=("vision",)))
             self.assertEqual(target.id, "fast/model")
             self.assertEqual(api_key_for(target), "")
         finally:
@@ -95,6 +95,6 @@ class ResolveFromEnvTests(unittest.TestCase):
                 os.environ, {"ROBONIX_LLM_CATALOG": str(path)}, clear=True
             ):
                 with self.assertRaises(RuntimeError):
-                    resolve_from_env(Requirements(capabilities=("audio",)))
+                    resolve_from_env(Requirements(features=("audio",)))
         finally:
             directory.cleanup()

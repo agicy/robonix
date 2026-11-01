@@ -278,16 +278,16 @@ fn env_atlas() -> Option<String> {
 /// Capabilities and budgets for the catalog lookup. The defaults describe what
 /// Pilot's planning requests need; every value can be overridden per
 /// deployment. `json_schema` is intentionally absent: Pilot already downgrades
-/// a rejected schema at request time, so requiring the capability here would
+/// a rejected schema at request time, so requiring the feature here would
 /// exclude a capable json_object model such as DeepSeek Flash.
 fn env_llm_requirements() -> Requirements {
-    let capabilities = std::env::var("ROBONIX_LLM_CAPABILITIES")
-        .unwrap_or_else(|_| "vision,tools,stream".to_owned());
+    let features =
+        std::env::var("ROBONIX_LLM_FEATURES").unwrap_or_else(|_| "vision,tools,stream".to_owned());
     Requirements {
-        capabilities: capabilities
+        features: features
             .split(',')
             .map(str::trim)
-            .filter(|capability| !capability.is_empty())
+            .filter(|feature| !feature.is_empty())
             .map(ToOwned::to_owned)
             .collect(),
         input_tokens: env_u64("ROBONIX_LLM_INPUT_TOKENS").unwrap_or(0),

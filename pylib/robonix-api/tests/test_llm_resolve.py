@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: MulanPSL-2.0
 import unittest
 
-from robonix_api.llm import Catalog, Requirements
+from robonix_api.llm import ModelCatalog, Requirements
 
 
 def _catalog(*models):
-    return Catalog.from_dict({"models": list(models)})
+    return ModelCatalog.from_dict({"models": list(models)})
 
 
 def _model(model_id, *, latency=None, vision=True, json_schema=True, context=8192):
@@ -15,7 +15,7 @@ def _model(model_id, *, latency=None, vision=True, json_schema=True, context=819
         "base_url": "http://127.0.0.1:8000/v1",
         "model": model_id,
         "api_key_env": "VLLM_API_KEY",
-        "capabilities": {
+        "features": {
             "vision": vision,
             "json_object": True,
             "json_schema": json_schema,
@@ -30,7 +30,7 @@ def _model(model_id, *, latency=None, vision=True, json_schema=True, context=819
 class ResolveTests(unittest.TestCase):
     def test_capability_is_a_hard_filter(self):
         catalog = _catalog(_model("vision", vision=True), _model("text", vision=False))
-        targets = catalog.resolve(Requirements(capabilities=("vision",)))
+        targets = catalog.resolve(Requirements(features=("vision",)))
         self.assertEqual([target.id for target in targets], ["vision"])
 
     def test_context_budget_filters_models(self):
@@ -62,7 +62,7 @@ class ResolveTests(unittest.TestCase):
     def test_downgrade_marks_every_target(self):
         catalog = _catalog(_model("object-only", json_schema=False, latency=100))
         targets = catalog.resolve(
-            Requirements(capabilities=("json_schema",), allow_downgrade=True),
+            Requirements(features=("json_schema",), allow_downgrade=True),
         )
         self.assertEqual([target.id for target in targets], ["object-only"])
         self.assertTrue(targets[0].downgraded)
@@ -70,6 +70,6 @@ class ResolveTests(unittest.TestCase):
     def test_no_downgrade_keeps_the_strict_request(self):
         catalog = _catalog(_model("object-only", json_schema=False, latency=100))
         targets = catalog.resolve(
-            Requirements(capabilities=("json_schema",), allow_downgrade=False),
+            Requirements(features=("json_schema",), allow_downgrade=False),
         )
         self.assertEqual(targets, [])

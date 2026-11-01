@@ -21,7 +21,7 @@ import urllib.request
 import zlib
 from pathlib import Path
 
-from robonix_api.llm import Catalog, Requirements
+from robonix_api.llm import ModelCatalog, Requirements
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -44,10 +44,10 @@ def _png(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
 
 
 def main() -> int:
-    catalog = Catalog.load(ROOT / "catalog.example.yaml")
+    catalog = ModelCatalog.load(ROOT / "catalog.example.yaml")
     targets = catalog.resolve(
         Requirements(
-            capabilities=("vision", "tools"),
+            features=("vision", "tools"),
             input_tokens=1000,
             max_output_tokens=256,
         ),

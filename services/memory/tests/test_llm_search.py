@@ -138,7 +138,7 @@ class TestLLMConfig(unittest.TestCase):
                                 "base_url": "http://127.0.0.1:9999/v1",
                                 "model": "test-llm",
                                 "api_key_env": "TEST_KEY",
-                                "capabilities": {"json_object": True},
+                                "features": {"json_object": True},
                                 "latency_p95_ms": 100,
                             }
                         ]

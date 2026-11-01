@@ -1,6 +1,6 @@
 # robonix_api.llm
 
-Capability catalog and model resolver for Robonix consumers, shipped as the
+Model catalog and model resolver for Robonix consumers, shipped as the
 `robonix_api.llm` submodule of `robonix-api`.
 
 The submodule answers one question: **given what this request needs, which
@@ -8,7 +8,7 @@ model should the consumer connect to?** It returns a model endpoint descriptor;
 the consumer opens that connection itself. There is no proxy, no model traffic
 and no health service here.
 
-## Catalog
+## ModelCatalog
 
 A catalog is a YAML or JSON file with a `models` list:
 
@@ -20,7 +20,7 @@ models:
     model: deepseek-flash
     api_key_env: DEEPSEEK_API_KEY
     protocol: openai-chat
-    capabilities:
+    features:
       vision: true
       json_object: true
       json_schema: false
@@ -43,12 +43,12 @@ directly.
 ```python
 import os
 from openai import OpenAI
-from robonix_api.llm import Catalog, Requirements
+from robonix_api.llm import ModelCatalog, Requirements
 
-catalog = Catalog.load("catalog.example.yaml")
+catalog = ModelCatalog.load("catalog.example.yaml")
 targets = catalog.resolve(
     Requirements(
-        capabilities=("vision", "tools"),
+        features=("vision", "tools"),
         input_tokens=12000,
         max_output_tokens=512,
     ),
@@ -79,7 +79,7 @@ the deployment catalog and then connect directly:
 ```python
 from robonix_api.llm import Requirements, api_key_for, resolve_from_env
 
-target = resolve_from_env(Requirements(capabilities=("vision",)))
+target = resolve_from_env(Requirements(features=("vision",)))
 if target is not None:
     base_url = target.base_url
     model = target.model
@@ -115,10 +115,10 @@ The requirements used by the in-tree consumers:
 | Scene perception | `vision` |
 | Memory search | `json_object` |
 | Memory observe | `vision` |
-| Memsearch compact | text (no hard capability) |
+| Memsearch compact | text (no hard feature) |
 | VLM Verifier | `vision` |
 | CI diagnose | `json_object` |
-| CI label judge | text (no hard capability) |
+| CI label judge | text (no hard feature) |
 
 ## Rust
 

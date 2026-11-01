@@ -62,7 +62,7 @@ class VlmConfig:
         configure the endpoint there.
         """
         try:
-            target = resolve_from_env(Requirements(capabilities=("vision",)))
+            target = resolve_from_env(Requirements(features=("vision",)))
         except RuntimeError as exc:
             raise ValueError(str(exc)) from exc
         if target is not None:

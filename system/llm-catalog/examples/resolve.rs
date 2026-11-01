@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: MulanPSL-2.0
-//! Print the models that satisfy a capability request.
+//! Print the models that satisfy a feature request.
 //!
 //! cargo run -p robonix-llm-catalog --example resolve -- \
 //!   pylib/robonix-api/robonix_api/llm/catalog.example.yaml vision,tools 1000 256
 
 use std::path::PathBuf;
 
-use robonix_llm_catalog::{Catalog, Requirements};
+use robonix_llm_catalog::{ModelCatalog, Requirements};
 
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);
     let catalog_path = args
         .next()
         .unwrap_or_else(|| "pylib/robonix-api/robonix_api/llm/catalog.example.yaml".to_owned());
-    let capabilities = args.next().unwrap_or_default();
+    let features = args.next().unwrap_or_default();
     let input_tokens = args
         .next()
         .and_then(|value| value.parse().ok())
@@ -23,12 +23,12 @@ fn main() -> anyhow::Result<()> {
         .and_then(|value| value.parse().ok())
         .unwrap_or(0);
 
-    let catalog = Catalog::load(&PathBuf::from(catalog_path))?;
+    let catalog = ModelCatalog::load(&PathBuf::from(catalog_path))?;
     let requirements = Requirements {
-        capabilities: capabilities
+        features: features
             .split(',')
             .map(str::trim)
-            .filter(|capability| !capability.is_empty())
+            .filter(|feature| !feature.is_empty())
             .map(ToOwned::to_owned)
             .collect(),
         input_tokens,

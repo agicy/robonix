@@ -4,7 +4,7 @@ name = "robonix-llm-catalog"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Capability catalog and model resolver for Robonix consumers."
+description = "Feature catalog and model resolver for Robonix consumers."
 
 [dependencies]
 anyhow.workspace = true

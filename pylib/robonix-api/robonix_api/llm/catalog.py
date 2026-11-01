@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MulanPSL-2.0
-"""Declarative model catalog for capability-based routing.
+"""Declarative model catalog for feature-based routing.
 
 The catalog is the single source of truth for what a model can do and how to
 connect to it.  It carries no secrets: `api_key_env` names the environment
@@ -25,7 +25,7 @@ class ModelSpec:
     base_url: str
     model: str
     api_key_env: str
-    capabilities: dict[str, bool] = field(default_factory=dict)
+    features: dict[str, bool] = field(default_factory=dict)
     context: int | None = None
     latency_p95_ms: float | None = None
     price_input_per_mtok: float = 0.0
@@ -46,7 +46,7 @@ class ModelSpec:
             base_url=_required_str(data, "base_url").rstrip("/"),
             model=_required_str(data, "model"),
             api_key_env=_required_str(data, "api_key_env"),
-            capabilities=_capabilities(data.get("capabilities")),
+            features=_features(data.get("features")),
             context=_optional_positive_int(data.get("context"), "context"),
             latency_p95_ms=_optional_non_negative(data.get("latency_p95_ms"),
                                                  "latency_p95_ms"),
@@ -62,16 +62,16 @@ class ModelSpec:
             raise ValueError(f"model {model_id!r}.protocol must not be empty")
         return spec
 
-    def supports(self, capability: str) -> bool:
-        return bool(self.capabilities.get(capability, False))
+    def supports(self, feature: str) -> bool:
+        return bool(self.features.get(feature, False))
 
 
 @dataclass(frozen=True)
-class Catalog:
+class ModelCatalog:
     models: tuple[ModelSpec, ...]
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "Catalog":
+    def from_dict(cls, data: dict[str, Any]) -> "ModelCatalog":
         if not isinstance(data, dict):
             raise ValueError("catalog must be an object")
         raw_models = data.get("models")
@@ -85,7 +85,7 @@ class Catalog:
         return cls(models=models)
 
     @classmethod
-    def load(cls, path: str | Path) -> "Catalog":
+    def load(cls, path: str | Path) -> "ModelCatalog":
         """Load a catalog from JSON or YAML, chosen by file suffix."""
         catalog_path = Path(path)
         text = catalog_path.read_text(encoding="utf-8")
@@ -123,11 +123,11 @@ def _required_str(data: dict[str, Any], key: str) -> str:
     return value.strip()
 
 
-def _capabilities(value: Any) -> dict[str, bool]:
+def _features(value: Any) -> dict[str, bool]:
     if value is None:
         return {}
     if not isinstance(value, dict):
-        raise ValueError("model.capabilities must be an object")
+        raise ValueError("model.features must be an object")
     return {str(name): bool(enabled) for name, enabled in value.items()}
 
 

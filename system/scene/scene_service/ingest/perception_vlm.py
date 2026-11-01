@@ -130,12 +130,12 @@ class VLMObjectDetector:
         try:
             target = resolve_from_env(
                 Requirements(
-                    capabilities=("vision",),
+                    features=("vision",),
                     max_output_tokens=self.max_tokens,
                 )
             )
         except RuntimeError as exc:
-            log.warning("[scene-vlm] capability catalog: %s", exc)
+            log.warning("[scene-vlm] model catalog: %s", exc)
         if target is not None:
             self.base_url = target.base_url
             self.api_key = api_key_for(target)

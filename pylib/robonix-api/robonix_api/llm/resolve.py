@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MulanPSL-2.0
-"""Pure capability-to-model resolution.
+"""Pure feature-to-model resolution.
 
-`Catalog.resolve` filters the catalog by required capabilities and request budgets and
+`ModelCatalog.resolve` filters the catalog by required features and request budgets and
 returns every matching model in preference order.  The caller connects to the
 first one directly; trying the next on failure is ordinary fallback and needs no
 extra state.  There is deliberately no health tracking, proxy or telemetry here.
@@ -12,7 +12,7 @@ import os
 from dataclasses import dataclass, replace
 from functools import lru_cache
 
-from .catalog import Catalog, ModelSpec
+from .catalog import ModelCatalog, ModelSpec
 
 
 @dataclass(frozen=True)
@@ -24,7 +24,7 @@ class Requirements:
     proven to fit.
     """
 
-    capabilities: tuple[str, ...] = ()
+    features: tuple[str, ...] = ()
     input_tokens: int = 0
     max_output_tokens: int = 0
     max_latency_ms: float | None = None
@@ -37,7 +37,7 @@ class Requirements:
         return cls()
 
 
-def _resolve(catalog: Catalog, requirements: Requirements) -> list[ModelSpec]:
+def _resolve(catalog: ModelCatalog, requirements: Requirements) -> list[ModelSpec]:
     """Return matching models, best first.
 
     Preference order is latency, then combined token price, then model id.
@@ -45,7 +45,7 @@ def _resolve(catalog: Catalog, requirements: Requirements) -> list[ModelSpec]:
     request budgets, ``allow_downgrade`` lets a ``json_object`` model stand in;
     every returned model then carries ``downgraded=True``.
     """
-    required = set(requirements.capabilities)
+    required = set(requirements.features)
     downgraded = False
 
     if "json_schema" in required and requirements.allow_downgrade:
@@ -61,7 +61,7 @@ def _resolve(catalog: Catalog, requirements: Requirements) -> list[ModelSpec]:
 
 
 def _matching(
-    catalog: Catalog, required: set[str], requirements: Requirements
+    catalog: ModelCatalog, required: set[str], requirements: Requirements
 ) -> list[ModelSpec]:
     return [
         model
@@ -71,7 +71,7 @@ def _matching(
 
 
 def _fits(model: ModelSpec, required: set[str], requirements: Requirements) -> bool:
-    if any(not model.supports(capability) for capability in required):
+    if any(not model.supports(feature) for feature in required):
         return False
     wanted_tokens = requirements.input_tokens + requirements.max_output_tokens
     if model.context is not None and wanted_tokens > model.context:
@@ -125,7 +125,7 @@ def resolve_from_env(
     targets = _catalog_for(path).resolve(requirements)
     if not targets:
         raise RuntimeError(
-            f"no model in {path} satisfies {sorted(requirements.capabilities)}"
+            f"no model in {path} satisfies {sorted(requirements.features)}"
         )
     for target in targets:
         if os.environ.get(target.api_key_env):
@@ -139,5 +139,5 @@ def api_key_for(target: ModelSpec) -> str:
 
 
 @lru_cache(maxsize=8)
-def _catalog_for(path: str) -> Catalog:
-    return Catalog.load(path)
+def _catalog_for(path: str) -> ModelCatalog:
+    return ModelCatalog.load(path)

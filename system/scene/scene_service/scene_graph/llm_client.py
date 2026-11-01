@@ -29,12 +29,9 @@ class SceneGraphLLMClient:
     ) -> None:
         target = None
         if base_url is None and api_key is None and model is None:
-            try:
-                # The graph client also serves the image-relation and caption
-                # paths, so vision is the hard requirement.
-                target = resolve_from_env(Requirements(features=("vision",)))
-            except RuntimeError as exc:
-                log.warning("[scene-graph-llm] model catalog: %s", exc)
+            # The graph client also serves the image-relation and caption
+            # paths, so vision is the hard requirement.
+            target = resolve_from_env(Requirements(features=("vision",)))
         if target is not None:
             self.base_url = target.base_url
             self.api_key = api_key_for(target)

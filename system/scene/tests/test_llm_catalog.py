@@ -10,6 +10,15 @@ from scene_service.scene_graph.llm_client import SceneGraphLLMClient
 
 
 class SceneCatalogTests(unittest.TestCase):
+    def test_catalog_load_error_is_not_hidden(self):
+        with patch.dict(
+            os.environ,
+            {"ROBONIX_LLM_CATALOG": "/nonexistent/catalog.yaml"},
+            clear=False,
+        ):
+            with self.assertRaises(FileNotFoundError):
+                SceneGraphLLMClient()
+
     def test_catalog_overrides_the_vlm_env(self):
         with tempfile.TemporaryDirectory() as tmp:
             catalog = Path(tmp) / "catalog.json"

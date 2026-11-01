@@ -243,11 +243,7 @@ def _compact_config() -> dict[str, str | None]:
     Without ROBONIX_LLM_CATALOG this keeps the historical VLM_* / OPENAI_*
     fallback so memory does not need a separate API key.
     """
-    try:
-        target = resolve_from_env(Requirements(max_output_tokens=1024))
-    except RuntimeError as exc:
-        log.warning("compact: model catalog: %s", exc)
-        target = None
+    target = resolve_from_env(Requirements(max_output_tokens=1024))
     if target is not None:
         return {
             "base_url": target.base_url,

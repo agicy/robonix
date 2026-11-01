@@ -111,9 +111,9 @@ def main() -> int:
     api_key_env: str | None = args.api_key_env
     try:
         target = resolve_from_env(Requirements(features=("json_object",)))
-    except RuntimeError as exc:
-        print(f"warning: model catalog: {exc}", file=sys.stderr)
-        target = None
+    except Exception as exc:
+        print(f"error: model catalog: {exc}", file=sys.stderr)
+        return 2
     if target is not None:
         provider = target.provider
         base_url = target.base_url

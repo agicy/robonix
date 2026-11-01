@@ -47,6 +47,11 @@ class CompactConfigTests(unittest.TestCase):
             },
         )
 
+    def test_catalog_load_error_is_not_hidden(self):
+        os.environ["ROBONIX_LLM_CATALOG"] = "/nonexistent/catalog.yaml"
+        with self.assertRaises(FileNotFoundError):
+            _compact_config()
+
     def test_catalog_overrides_legacy_env(self):
         with tempfile.TemporaryDirectory() as tmp:
             catalog = Path(tmp) / "catalog.json"

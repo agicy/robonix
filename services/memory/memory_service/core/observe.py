@@ -27,13 +27,9 @@ log = logging.getLogger("scribe_mem")
 # ── VLM config (reuses Pilot's env vars) ───────────────────────────────────
 
 def _vlm_config() -> dict:
-    try:
-        target = resolve_from_env(
-            Requirements(features=("vision",), max_output_tokens=256)
-        )
-    except RuntimeError as exc:
-        log.warning("observe: model catalog: %s", exc)
-        target = None
+    target = resolve_from_env(
+        Requirements(features=("vision",), max_output_tokens=256)
+    )
     if target is not None:
         return {
             "base_url": target.base_url,

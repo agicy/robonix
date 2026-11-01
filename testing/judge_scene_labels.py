@@ -101,7 +101,7 @@ def _judge_config(model: str) -> tuple[str, str, str]:
     """Resolve the judge endpoint, preferring the deployment catalog."""
     try:
         target = resolve_from_env(Requirements())
-    except RuntimeError as exc:
+    except Exception as exc:
         raise SystemExit(f"model catalog: {exc}") from exc
     if target is not None:
         api_key = api_key_for(target)

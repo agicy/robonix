@@ -71,6 +71,16 @@ class TestVLMConfig(unittest.TestCase):
         cfg = _vlm_config()
         assert cfg["model"] == "gpt-4.1"
 
+    def test_catalog_load_error_is_not_hidden(self):
+        self._clear_env()
+        with patch.dict(
+            os.environ,
+            {"ROBONIX_LLM_CATALOG": "/nonexistent/catalog.yaml"},
+            clear=False,
+        ):
+            with self.assertRaises(FileNotFoundError):
+                _vlm_config()
+
     def test_catalog_overrides_legacy_config(self):
         self._clear_env()
         with tempfile.TemporaryDirectory() as tmp:

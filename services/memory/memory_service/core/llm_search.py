@@ -36,13 +36,9 @@ log = logging.getLogger("scribe_mem")
 
 def _llm_config() -> dict:
     """Resolve LLM endpoint from env vars with standard fallbacks."""
-    try:
-        target = resolve_from_env(
-            Requirements(features=("json_object",), max_output_tokens=512)
-        )
-    except RuntimeError as exc:
-        log.warning("llm_search: model catalog: %s", exc)
-        target = None
+    target = resolve_from_env(
+        Requirements(features=("json_object",), max_output_tokens=512)
+    )
     if target is not None:
         return {
             "base_url": target.base_url,

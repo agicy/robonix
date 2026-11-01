@@ -205,6 +205,22 @@ class ParsingTests(unittest.TestCase):
         self.assertEqual(config.model, "explicit-model")
         self.assertEqual(config.api_key, "explicit-key")
 
+    def test_explicit_vlm_ignores_a_broken_catalog(self):
+        with patch.dict(
+            os.environ,
+            {"ROBONIX_LLM_CATALOG": "/nonexistent/catalog.yaml"},
+            clear=False,
+        ):
+            config = vlm.VlmConfig.parse(
+                {
+                    "base_url": "http://explicit.example/v1",
+                    "api_key": "explicit-key",
+                    "model": "explicit-model",
+                }
+            )
+        self.assertEqual(config.base_url, "http://explicit.example/v1")
+        self.assertEqual(config.model, "explicit-model")
+
     def test_vlm_model_can_select_a_catalog_id(self):
         with tempfile.TemporaryDirectory() as tmp:
             catalog = Path(tmp) / "catalog.json"

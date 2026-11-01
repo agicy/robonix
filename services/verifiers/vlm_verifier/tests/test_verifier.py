@@ -142,6 +142,34 @@ class ParsingTests(unittest.TestCase):
         self.assertEqual(config.model, "test-vl")
         self.assertEqual(config.api_key, "secret")
 
+    def test_keyless_catalog_target_is_allowed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            catalog = Path(tmp) / "catalog.json"
+            catalog.write_text(
+                json.dumps(
+                    {
+                        "models": [
+                            {
+                                "id": "local/keyless",
+                                "provider": "vllm",
+                                "base_url": "http://127.0.0.1:9999/v1",
+                                "model": "local",
+                                "features": {"vision": True},
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {"ROBONIX_LLM_CATALOG": str(catalog)},
+                clear=False,
+            ):
+                config = vlm.VlmConfig.parse(None)
+        self.assertEqual(config.api_key, "")
+        self.assertFalse(config.requires_key)
+
     def test_catalog_url_is_validated(self):
         with tempfile.TemporaryDirectory() as tmp:
             catalog = Path(tmp) / "catalog.json"

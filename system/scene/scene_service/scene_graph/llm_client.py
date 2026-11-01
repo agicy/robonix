@@ -32,10 +32,12 @@ class SceneGraphLLMClient:
             # The graph client also serves the image-relation and caption
             # paths, so vision is the hard requirement.
             target = resolve_from_env(Requirements(features=("vision",)))
+        self.requires_key = True
         if target is not None:
             self.base_url = target.base_url
             self.api_key = api_key_for(target)
             self.model = target.model
+            self.requires_key = target.api_key_env is not None
             log.info(
                 "[scene-graph-llm] catalog target %s model=%s",
                 target.id,
@@ -67,7 +69,7 @@ class SceneGraphLLMClient:
         else:
             self.reasoning_effort = os.environ.get("VLM_REASONING_EFFORT", "").strip()
 
-        if not self.api_key:
+        if self.requires_key and not self.api_key:
             log.warning(
                 "[scene-graph-llm] VLM_API_KEY not set; "
                 "relation inference will return 'unknown'"
@@ -75,7 +77,9 @@ class SceneGraphLLMClient:
 
     @property
     def available(self) -> bool:
-        return bool(self.base_url and self.api_key)
+        return bool(self.base_url) and (
+            bool(self.api_key) or not self.requires_key
+        )
 
     async def chat_json(
         self,
@@ -92,10 +96,9 @@ class SceneGraphLLMClient:
             return {}
 
         url = f"{self.base_url}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
         if images:
             user_content: Any = [{"type": "text", "text": user_message}]
             for img in images:

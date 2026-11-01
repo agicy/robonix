@@ -249,11 +249,13 @@ def _compact_config() -> dict[str, str | None]:
             "base_url": target.base_url,
             "api_key": api_key_for(target),
             "model": target.model,
+            "requires_key": target.api_key_env is not None,
         }
     return {
         "base_url": os.environ.get("VLM_BASE_URL") or os.environ.get("OPENAI_BASE_URL"),
         "api_key": os.environ.get("VLM_API_KEY") or os.environ.get("OPENAI_API_KEY"),
         "model": os.environ.get("VLM_MODEL") or os.environ.get("OPENAI_MODEL") or "gpt-5.5",
+        "requires_key": True,
     }
 
 
@@ -271,7 +273,7 @@ async def compact(msg: Empty) -> String:
     api_key = config["api_key"]
     model = str(config["model"] or "gpt-5.5")
     log.info("compact (model=%s, base_url=%s)", model, _redact_url(base_url))
-    if not api_key:
+    if config["requires_key"] and not api_key:
         log.warning("compact: no LLM key set (VLM_API_KEY / OPENAI_API_KEY)")
         return String(data="compact: no LLM credentials available. "
                            "Set VLM_API_KEY in the deploy manifest's system.memory env block.")

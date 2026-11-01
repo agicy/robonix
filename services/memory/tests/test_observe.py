@@ -71,6 +71,36 @@ class TestVLMConfig(unittest.TestCase):
         cfg = _vlm_config()
         assert cfg["model"] == "gpt-4.1"
 
+    def test_keyless_catalog_is_available(self):
+        self._clear_env()
+        with tempfile.TemporaryDirectory() as tmp:
+            catalog = Path(tmp) / "catalog.json"
+            catalog.write_text(
+                json.dumps(
+                    {
+                        "models": [
+                            {
+                                "id": "local/keyless",
+                                "provider": "vllm",
+                                "base_url": "http://127.0.0.1:9999/v1",
+                                "model": "local",
+                                "features": {"vision": True},
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {"ROBONIX_LLM_CATALOG": str(catalog)},
+                clear=False,
+            ):
+                assert _vlm_available() is True
+                cfg = _vlm_config()
+        assert cfg["requires_key"] is False
+        assert cfg["api_key"] == ""
+
     def test_catalog_load_error_is_not_hidden(self):
         self._clear_env()
         with patch.dict(
@@ -118,6 +148,7 @@ class TestVLMConfig(unittest.TestCase):
             "base_url": "http://127.0.0.1:9999/v1",
             "api_key": "secret",
             "model": "test-vl",
+            "requires_key": True,
         }
 
 

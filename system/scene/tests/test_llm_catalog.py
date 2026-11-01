@@ -10,6 +10,35 @@ from scene_service.scene_graph.llm_client import SceneGraphLLMClient
 
 
 class SceneCatalogTests(unittest.TestCase):
+    def test_keyless_catalog_target_is_available(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            catalog = Path(tmp) / "catalog.json"
+            catalog.write_text(
+                json.dumps(
+                    {
+                        "models": [
+                            {
+                                "id": "local/keyless",
+                                "provider": "vllm",
+                                "base_url": "http://127.0.0.1:9999/v1",
+                                "model": "local",
+                                "features": {"vision": True},
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {"ROBONIX_LLM_CATALOG": str(catalog)},
+                clear=False,
+            ):
+                client = SceneGraphLLMClient()
+        self.assertTrue(client.available)
+        self.assertFalse(client.requires_key)
+        self.assertEqual(client.api_key, "")
+
     def test_catalog_load_error_is_not_hidden(self):
         with patch.dict(
             os.environ,

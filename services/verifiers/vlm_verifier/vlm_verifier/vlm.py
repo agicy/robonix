@@ -57,6 +57,7 @@ class VlmConfig:
     base_url: str
     api_key: str = field(repr=False)
     model: str
+    requires_key: bool = True
 
     @classmethod
     def parse(cls, cfg):
@@ -117,7 +118,12 @@ class VlmConfig:
             raise ValueError(
                 f"{target.api_key_env} is required for catalog target {target.id!r}"
             )
-        return cls(_validated_base_url(target.base_url), api_key, target.model)
+        return cls(
+            _validated_base_url(target.base_url),
+            api_key,
+            target.model,
+            requires_key=target.api_key_env is not None,
+        )
 
 
 def _validated_base_url(value: str) -> str:
@@ -194,9 +200,12 @@ async def judge(config, envelope, before, after):
     }
     try:
         async with httpx.AsyncClient(timeout=40, follow_redirects=False) as client:
+            headers = {"Content-Type": "application/json"}
+            if config.api_key:
+                headers["Authorization"] = "Bearer " + config.api_key
             response = await client.post(
                 config.base_url + "/chat/completions",
-                headers={"Authorization": "Bearer " + config.api_key},
+                headers=headers,
                 json=payload,
             )
             response.raise_for_status()

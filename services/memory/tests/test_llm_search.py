@@ -171,7 +171,39 @@ class TestLLMConfig(unittest.TestCase):
             "base_url": "http://127.0.0.1:9999/v1",
             "api_key": "secret",
             "model": "test-llm",
+            "requires_key": True,
         }
+
+
+    def test_keyless_catalog_is_available(self):
+        self._clear_env()
+        with tempfile.TemporaryDirectory() as tmp:
+            catalog = Path(tmp) / "catalog.json"
+            catalog.write_text(
+                json.dumps(
+                    {
+                        "models": [
+                            {
+                                "id": "local/keyless",
+                                "provider": "vllm",
+                                "base_url": "http://127.0.0.1:9999/v1",
+                                "model": "local",
+                                "features": {"json_object": True},
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {"ROBONIX_LLM_CATALOG": str(catalog)},
+                clear=False,
+            ):
+                assert llm_search.llm_search_available() is True
+                cfg = llm_search._llm_config()
+        assert cfg["requires_key"] is False
+        assert cfg["api_key"] == ""
 
 
 class TestLLMRankFallback(unittest.TestCase):

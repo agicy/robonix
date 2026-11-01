@@ -83,9 +83,12 @@ def _chat(base_url: str, api_key: str, model: str, system: str, user: str) -> st
         "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": user}],
     }).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     req = urllib.request.Request(
         base_url.rstrip("/") + "/chat/completions", data=body, method="POST",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"})
+        headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=180) as resp:
             payload = json.loads(resp.read().decode("utf-8"))

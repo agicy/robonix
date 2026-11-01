@@ -44,6 +44,7 @@ def _llm_config() -> dict:
             "base_url": target.base_url,
             "api_key": api_key_for(target),
             "model": target.model,
+            "requires_key": target.api_key_env is not None,
         }
 
     base_url = (
@@ -64,13 +65,20 @@ def _llm_config() -> dict:
         or os.environ.get("OPENAI_MODEL")
         or "gpt-4.1"
     )
-    return {"base_url": base_url, "api_key": api_key, "model": model}
+    return {
+        "base_url": base_url,
+        "api_key": api_key,
+        "model": model,
+        "requires_key": True,
+    }
 
 
 def llm_search_available() -> bool:
-    """True if enough LLM credentials are set to attempt a search."""
+    """True if the endpoint is configured and any required key is present."""
     cfg = _llm_config()
-    return bool(cfg["api_key"]) and bool(cfg["base_url"])
+    return bool(cfg["base_url"]) and (
+        bool(cfg["api_key"]) or not cfg["requires_key"]
+    )
 
 
 # ── Formatter ──────────────────────────────────────────────────────────────
@@ -149,17 +157,16 @@ async def _call_llm(prompt: str, max_tokens: int = 512) -> Optional[List[int]]:
     Returns None on any failure — the caller falls back to chronological order.
     """
     cfg = _llm_config()
-    if not cfg["api_key"] or not cfg["base_url"]:
+    if not cfg["base_url"] or (cfg["requires_key"] and not cfg["api_key"]):
         log.debug("llm_search: no LLM credentials — skipping")
         return None
 
     import httpx
 
     url = f"{cfg['base_url'].rstrip('/')}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {cfg['api_key']}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Content-Type": "application/json"}
+    if cfg["api_key"]:
+        headers["Authorization"] = f"Bearer {cfg['api_key']}"
     body: dict = {
         "model": cfg["model"],
         "messages": [{"role": "user", "content": prompt}],

@@ -44,8 +44,36 @@ class CompactConfigTests(unittest.TestCase):
                 "base_url": "https://legacy.example.com/v1",
                 "api_key": "legacy",
                 "model": "legacy-model",
+                "requires_key": True,
             },
         )
+
+    def test_keyless_catalog_is_usable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            catalog = Path(tmp) / "catalog.json"
+            catalog.write_text(
+                json.dumps(
+                    {
+                        "models": [
+                            {
+                                "id": "local/keyless",
+                                "provider": "vllm",
+                                "base_url": "http://127.0.0.1:9999/v1",
+                                "model": "local",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {"ROBONIX_LLM_CATALOG": str(catalog)},
+                clear=False,
+            ):
+                config = _compact_config()
+        self.assertFalse(config["requires_key"])
+        self.assertEqual(config["api_key"], "")
 
     def test_catalog_load_error_is_not_hidden(self):
         os.environ["ROBONIX_LLM_CATALOG"] = "/nonexistent/catalog.yaml"
@@ -90,6 +118,7 @@ class CompactConfigTests(unittest.TestCase):
                 "base_url": "http://127.0.0.1:9999/v1",
                 "api_key": "secret",
                 "model": "test-summarizer",
+                "requires_key": True,
             },
         )
 

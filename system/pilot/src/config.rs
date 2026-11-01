@@ -321,37 +321,7 @@ fn env_atlas() -> Option<String> {
 /// a rejected schema at request time, so requiring the feature here would
 /// exclude a capable json_object model such as DeepSeek Flash.
 fn env_llm_requirements() -> Requirements {
-    let features =
-        std::env::var("ROBONIX_LLM_FEATURES").unwrap_or_else(|_| "vision,tools,stream".to_owned());
-    Requirements {
-        features: features
-            .split(',')
-            .map(str::trim)
-            .filter(|feature| !feature.is_empty())
-            .map(ToOwned::to_owned)
-            .collect(),
-        input_tokens: env_u64("ROBONIX_LLM_INPUT_TOKENS").unwrap_or(0),
-        max_output_tokens: env_u64("ROBONIX_LLM_MAX_OUTPUT_TOKENS").unwrap_or(0),
-        max_latency_ms: env_f64("ROBONIX_LLM_MAX_LATENCY_MS"),
-        max_cost_usd_per_call: env_f64("ROBONIX_LLM_MAX_COST_USD_PER_CALL"),
-        allow_downgrade: env_bool("ROBONIX_LLM_ALLOW_DOWNGRADE").unwrap_or(true),
-    }
-}
-
-fn env_u64(name: &str) -> Option<u64> {
-    std::env::var(name).ok()?.parse().ok()
-}
-
-fn env_f64(name: &str) -> Option<f64> {
-    std::env::var(name).ok()?.parse().ok()
-}
-
-fn env_bool(name: &str) -> Option<bool> {
-    match std::env::var(name).ok()?.to_ascii_lowercase().as_str() {
-        "1" | "true" | "yes" | "on" => Some(true),
-        "0" | "false" | "no" | "off" => Some(false),
-        _ => None,
-    }
+    Requirements::from_env("vision,tools,stream")
 }
 
 fn load_yaml(path: &Path) -> Result<FileConfig> {

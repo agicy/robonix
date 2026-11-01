@@ -100,6 +100,45 @@ impl Default for Requirements {
     }
 }
 
+impl Requirements {
+    /// Build request requirements from the `ROBONIX_LLM_*` environment.
+    /// `default_features` is used when `ROBONIX_LLM_FEATURES` is absent.
+    #[must_use]
+    pub fn from_env(default_features: &str) -> Self {
+        let features =
+            std::env::var("ROBONIX_LLM_FEATURES").unwrap_or_else(|_| default_features.to_owned());
+        Self {
+            features: features
+                .split(',')
+                .map(str::trim)
+                .filter(|feature| !feature.is_empty())
+                .map(ToOwned::to_owned)
+                .collect(),
+            input_tokens: env_u64("ROBONIX_LLM_INPUT_TOKENS").unwrap_or(0),
+            max_output_tokens: env_u64("ROBONIX_LLM_MAX_OUTPUT_TOKENS").unwrap_or(0),
+            max_latency_ms: env_f64("ROBONIX_LLM_MAX_LATENCY_MS"),
+            max_cost_usd_per_call: env_f64("ROBONIX_LLM_MAX_COST_USD_PER_CALL"),
+            allow_downgrade: env_bool("ROBONIX_LLM_ALLOW_DOWNGRADE").unwrap_or(true),
+        }
+    }
+}
+
+fn env_u64(name: &str) -> Option<u64> {
+    std::env::var(name).ok()?.parse().ok()
+}
+
+fn env_f64(name: &str) -> Option<f64> {
+    std::env::var(name).ok()?.parse().ok()
+}
+
+fn env_bool(name: &str) -> Option<bool> {
+    match std::env::var(name).ok()?.to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
+
 impl ModelCatalog {
     /// Load a JSON or YAML catalog, chosen by file extension.
     pub fn load(path: &Path) -> Result<Self> {

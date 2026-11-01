@@ -245,6 +245,16 @@ fn estimated_cost(model: &ModelSpec, req: &Requirements) -> f64 {
 
 /// Resolve one target from `ROBONIX_LLM_CATALOG`, or `None` when unset.
 ///
+/// Load the catalog named by `ROBONIX_LLM_CATALOG`, or `None` when unset.
+pub fn catalog_from_env() -> Result<Option<ModelCatalog>> {
+    let path = std::env::var("ROBONIX_LLM_CATALOG").unwrap_or_default();
+    let path = path.trim();
+    if path.is_empty() {
+        return Ok(None);
+    }
+    ModelCatalog::load(Path::new(path)).map(Some)
+}
+
 /// A target with no `api_key_env` needs no credential and stays eligible. A
 /// target whose `api_key_env` is set but missing from the environment is
 /// skipped; if no target is usable, the error names the variables to set. The

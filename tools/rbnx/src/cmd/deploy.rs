@@ -569,6 +569,10 @@ soma_endpoint: 127.0.0.1:50091
             .expect("valid catalog");
         assert_eq!(catalog.pilot_target.as_deref(), Some("catalog/model"));
         assert!(!catalog.pilot_explicit);
+        assert_eq!(
+            std::env::var("ROBONIX_LLM_KEY_ENVS").as_deref(),
+            Ok("CAT_KEY")
+        );
     }
 
     #[test]
@@ -595,6 +599,7 @@ soma_endpoint: 127.0.0.1:50091
         let catalog = validate_model_catalog(&env.path, "manifest", &HashMap::new(), true)
             .expect("keyless catalog");
         assert_eq!(catalog.pilot_target.as_deref(), Some("local/keyless"));
+        assert_eq!(std::env::var("ROBONIX_LLM_KEY_ENVS").as_deref(), Ok(""));
     }
 
     #[test]

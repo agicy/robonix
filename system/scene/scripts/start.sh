@@ -141,6 +141,29 @@ if [[ -n "${ROBONIX_LLM_CATALOG:-}" ]]; then
     export ROBONIX_LLM_CATALOG
     CATALOG_ARGS=(-v "${ROBONIX_LLM_CATALOG}:${ROBONIX_LLM_CATALOG}:ro")
 fi
+# rbnx exports ROBONIX_LLM_KEY_ENVS with exactly the api_key_env names the
+# catalog uses. Forward only those; the legacy six-key list remains for
+# manual launches that predate the catalog.
+declare -a KEY_ARGS=()
+if [[ -n "${ROBONIX_LLM_CATALOG:-}" && -n "${ROBONIX_LLM_KEY_ENVS+x}" ]]; then
+    IFS=',' read -r -a ROBONIX_LLM_KEY_NAMES <<< "${ROBONIX_LLM_KEY_ENVS}"
+    for key_name in "${ROBONIX_LLM_KEY_NAMES[@]}"; do
+        key_name="${key_name//[[:space:]]/}"
+        [[ -z "$key_name" ]] && continue
+        if [[ -n "${!key_name:-}" ]]; then
+            KEY_ARGS+=(-e "$key_name")
+        fi
+    done
+else
+    KEY_ARGS=(
+        -e DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-}"
+        -e OPENAI_API_KEY="${OPENAI_API_KEY:-}"
+        -e DASHSCOPE_API_KEY="${DASHSCOPE_API_KEY:-}"
+        -e VLLM_API_KEY="${VLLM_API_KEY:-}"
+        -e ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
+        -e GEMINI_API_KEY="${GEMINI_API_KEY:-}"
+    )
+fi
 if [[ -n "${RBNX_CONFIG_FILE:-}" ]]; then
     EXTRA_MOUNTS+=(-v "${RBNX_CONFIG_FILE}:${RBNX_CONFIG_FILE}:ro")
 fi
@@ -281,12 +304,7 @@ exec docker run --rm \
     -e VLM_REASONING_EFFORT="${VLM_REASONING_EFFORT:-}" \
     -e SCENE_VLM_MAX_TOKENS="${SCENE_VLM_MAX_TOKENS:-}" \
     -e ROBONIX_LLM_CATALOG="${ROBONIX_LLM_CATALOG:-}" \
-    -e DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-}" \
-    -e OPENAI_API_KEY="${OPENAI_API_KEY:-}" \
-    -e DASHSCOPE_API_KEY="${DASHSCOPE_API_KEY:-}" \
-    -e VLLM_API_KEY="${VLLM_API_KEY:-}" \
-    -e ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}" \
-    -e GEMINI_API_KEY="${GEMINI_API_KEY:-}" \
+    ${KEY_ARGS[@]+"${KEY_ARGS[@]}"} \
     -e SCENE_GRAPH_ENABLED="${SCENE_GRAPH_ENABLED:-true}" \
     -e SCENE_GRAPH_RELATION_ENABLED="${SCENE_GRAPH_RELATION_ENABLED:-true}" \
     -e SCENE_GRAPH_INTERVAL_SEC="${SCENE_GRAPH_INTERVAL_SEC:-30}" \
@@ -312,7 +330,6 @@ exec docker run --rm \
     -v "$PKG/rbnx-build/codegen/scene_proto_gen:/scene/rbnx-build/codegen/proto_gen:ro" \
     -v "$SCENE_HOST_DATA_DIR":/data/robonix \
     -v "$(rbnx path robonix-api)":/robonix-api:ro \
-    -e PYTHONPATH=/robonix-api \
     ${EXTRA_MOUNTS[@]+"${EXTRA_MOUNTS[@]}"} \
     ${CATALOG_ARGS[@]+"${CATALOG_ARGS[@]}"} \
     "$IMG"

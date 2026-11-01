@@ -8,11 +8,10 @@ properties:
   vlm:
     type: object
     description: >-
-      Model endpoint, credential and model ID. All three fields are required
-      and must be non-empty strings. When the deployment sets
-      ROBONIX_LLM_CATALOG, the catalog's vision target wins and this block is
-      ignored; it stays required because most deployments configure the
-      endpoint here.
+      Optional model endpoint. A complete block (base_url, api_key and model)
+      is explicit and wins over the deployment catalog. A block with only
+      model selects that catalog id. Omit the block to resolve the catalog's
+      vision target. Without either, startup fails.
     properties:
       base_url:
         type: string
@@ -26,6 +25,6 @@ properties:
         x-secret: true
       model:
         type: string
-        description: Model ID that accepts image_url data URIs. There is no default.
-    required: [base_url, api_key, model]
-required: [vlm]
+        description: >-
+          Model ID that accepts image_url data URIs, or a catalog id when
+          base_url is omitted.

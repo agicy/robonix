@@ -103,6 +103,14 @@ def _preference(model: ModelSpec) -> tuple[float, float, str]:
     )
 
 
+def catalog_from_env() -> ModelCatalog | None:
+    """Load the catalog named by ``ROBONIX_LLM_CATALOG``, or ``None``."""
+    path = os.environ.get("ROBONIX_LLM_CATALOG", "").strip()
+    if not path:
+        return None
+    return _catalog_for(path)
+
+
 def resolve_from_env(
     requirements: Requirements,
     *,

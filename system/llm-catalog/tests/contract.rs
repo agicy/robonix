@@ -32,7 +32,7 @@ struct Case {
 /// Request requirements as they appear in the JSON contract file.
 #[derive(Debug, Deserialize)]
 struct CaseRequirements {
-    /// Capabilities the model must support.
+    /// Features the model must support.
     #[serde(default)]
     features: Vec<String>,
     /// Estimated input tokens.

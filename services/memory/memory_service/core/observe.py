@@ -32,7 +32,7 @@ def _vlm_config() -> dict:
             Requirements(features=("vision",), max_output_tokens=256)
         )
     except RuntimeError as exc:
-        log.warning("observe: capability catalog: %s", exc)
+        log.warning("observe: model catalog: %s", exc)
         target = None
     if target is not None:
         return {

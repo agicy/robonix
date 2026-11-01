@@ -102,7 +102,7 @@ def _judge_config(model: str) -> tuple[str, str, str]:
     try:
         target = resolve_from_env(Requirements())
     except RuntimeError as exc:
-        raise SystemExit(f"capability catalog: {exc}") from exc
+        raise SystemExit(f"model catalog: {exc}") from exc
     if target is not None:
         api_key = api_key_for(target)
         if not api_key:

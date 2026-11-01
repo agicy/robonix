@@ -19,7 +19,7 @@ from .catalog import ModelCatalog, ModelSpec
 class Requirements:
     """What the caller needs for this request.
 
-    Capabilities are hard requirements.  Budgets are optional; an unknown
+    Features are hard requirements.  Budgets are optional; an unknown
     latency is rejected when a latency budget is set because it cannot be
     proven to fit.
     """

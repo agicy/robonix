@@ -129,7 +129,7 @@ mkdir -p "$SCENE_HOST_DATA_DIR"
 # start.sh was dying there before it could launch the service container, which
 # is why the runtime-protobuf contract test only ever saw the codegen run.
 declare -a EXTRA_MOUNTS=()
-# The capability catalog is a deployment file outside the image. Mount it at
+# The model catalog is a deployment file outside the image. Mount it at
 # the same absolute path so ROBONIX_LLM_CATALOG means the same thing inside.
 declare -a CATALOG_ARGS=()
 if [[ -n "${ROBONIX_LLM_CATALOG:-}" ]]; then

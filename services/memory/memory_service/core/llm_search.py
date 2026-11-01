@@ -41,7 +41,7 @@ def _llm_config() -> dict:
             Requirements(features=("json_object",), max_output_tokens=512)
         )
     except RuntimeError as exc:
-        log.warning("llm_search: capability catalog: %s", exc)
+        log.warning("llm_search: model catalog: %s", exc)
         target = None
     if target is not None:
         return {

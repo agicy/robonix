@@ -246,7 +246,7 @@ def _compact_config() -> dict[str, str | None]:
     try:
         target = resolve_from_env(Requirements(max_output_tokens=1024))
     except RuntimeError as exc:
-        log.warning("compact: capability catalog: %s", exc)
+        log.warning("compact: model catalog: %s", exc)
         target = None
     if target is not None:
         return {

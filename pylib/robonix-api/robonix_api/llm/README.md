@@ -108,7 +108,7 @@ The catalog is read once per process; restart a consumer after editing it.
 
 The requirements used by the in-tree consumers:
 
-| Consumer | Capabilities |
+| Consumer | Features |
 |---|---|
 | Pilot | `vision, tools, stream` (schema is downgraded at request time) |
 | Scene relation/caption | `vision` |

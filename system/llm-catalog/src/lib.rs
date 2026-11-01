@@ -67,11 +67,11 @@ pub struct ModelCatalog {
     pub models: Vec<ModelSpec>,
 }
 
-/// What a request needs.  Capabilities are hard requirements; budgets are
+/// What a request needs.  Features are hard requirements; budgets are
 /// optional.  An unknown latency is rejected when a latency budget is set.
 #[derive(Debug, Clone)]
 pub struct Requirements {
-    /// Capabilities the model must support; all of them are required.
+    /// Features the model must support; all of them are required.
     pub features: Vec<String>,
     /// Estimated input tokens for the request.
     pub input_tokens: u64,

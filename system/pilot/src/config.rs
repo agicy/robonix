@@ -275,7 +275,7 @@ fn env_atlas() -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
-/// Capabilities and budgets for the catalog lookup. The defaults describe what
+/// Features and budgets for the catalog lookup. The defaults describe what
 /// Pilot's planning requests need; every value can be overridden per
 /// deployment. `json_schema` is intentionally absent: Pilot already downgrades
 /// a rejected schema at request time, so requiring the feature here would

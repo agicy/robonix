@@ -128,7 +128,16 @@ def _features(value: Any) -> dict[str, bool]:
         return {}
     if not isinstance(value, dict):
         raise ValueError("model.features must be an object")
-    return {str(name): bool(enabled) for name, enabled in value.items()}
+    features: dict[str, bool] = {}
+    for name, enabled in value.items():
+        if not isinstance(name, str):
+            raise ValueError("model.features keys must be strings")
+        if not isinstance(enabled, bool):
+            # bool("false") is True; reject malformed values instead of
+            # silently advertising a feature the model does not have.
+            raise ValueError(f"model.features.{name} must be a boolean")
+        features[name] = enabled
+    return features
 
 
 def _optional_positive_int(value: Any, key: str) -> int | None:

@@ -455,14 +455,22 @@ soma_endpoint: 127.0.0.1:50091
             "--vlm-model".into(),
             "gpt-4o".into(),
         ];
-        assert!(require_system_args("pilot", &known).is_ok());
+        assert!(require_system_args("pilot", &known, false).is_ok());
 
         let mut unknown = known.clone();
         unknown[5] = "private-local-planner".into();
-        assert!(require_system_args("pilot", &unknown).is_ok());
+        assert!(require_system_args("pilot", &unknown, false).is_ok());
         unknown.extend(["--vlm-context-window-tokens".into(), "32768".into()]);
-        assert!(require_system_args("pilot", &unknown).is_ok());
-        assert!(system_boot_detail("pilot", &unknown).contains("context=32768 (manual)"));
+        assert!(require_system_args("pilot", &unknown, false).is_ok());
+        assert!(system_boot_detail("pilot", &unknown, false).contains("context=32768 (manual)"));
+    }
+
+    #[test]
+    fn pilot_preflight_allows_missing_vlm_args_when_catalog_is_enabled() {
+        let empty: Vec<String> = Vec::new();
+        assert!(require_system_args("pilot", &empty, true).is_ok());
+        assert!(require_system_args("pilot", &empty, false).is_err());
+        assert!(system_boot_detail("pilot", &empty, true).contains("vlm=catalog"));
     }
 }
 
@@ -955,7 +963,7 @@ async fn spawn_system_binary(
     // (--capabilities path lists, --vlm-api-key, …). Full args are
     // available in the log file; the boot line stays terse so users
     // can scan the bring-up sequence at a glance.
-    let detail = system_boot_detail(name, args);
+    let detail = system_boot_detail(name, args, llm_catalog_enabled());
     output::boot_ok(name, &detail);
     Ok(Spawned {
         name: name.to_string(),
@@ -1103,7 +1111,7 @@ async fn spawn_soma_binary(
         }
     });
 
-    let detail = system_boot_detail(name, args);
+    let detail = system_boot_detail(name, args, llm_catalog_enabled());
     output::boot_ok(name, &detail);
     Ok((
         Spawned {
@@ -1633,7 +1641,7 @@ pub async fn execute(
                 // required field 'vlm.upstream'`. Boot still printed `[ OK ]`
                 // because we never re-checked. Fail fast at spawn time and tell
                 // the user exactly what's missing.
-                if let Err(e) = require_system_args(name, &args) {
+                if let Err(e) = require_system_args(name, &args, llm_catalog_enabled()) {
                     output::boot_fail(name, &e);
                     anyhow::bail!("system/{name}: {e}");
                 }
@@ -2080,9 +2088,15 @@ fn persist_state(
 /// produces `--vlm-upstream ""` — pilot then registers briefly, dies
 /// with `missing required field 'vlm.upstream'`, and boot reports
 /// `[ OK ]` because the failure happens after spawn-and-register. Catch
-/// it here so the user sees a `[FAIL]` line naming the bad keys.
-fn require_system_args(name: &str, args: &[String]) -> std::result::Result<(), String> {
-    if name != "pilot" {
+/// it here so the user sees a `[FAIL]` line naming the bad keys. A deployment
+/// that selects `ROBONIX_LLM_CATALOG` does not need the legacy VLM fields:
+/// Pilot resolves them from the catalog instead.
+fn require_system_args(
+    name: &str,
+    args: &[String],
+    llm_catalog: bool,
+) -> std::result::Result<(), String> {
+    if name != "pilot" || llm_catalog {
         return Ok(());
     }
     let need = [
@@ -2113,7 +2127,15 @@ fn require_system_args(name: &str, args: &[String]) -> std::result::Result<(), S
     Ok(())
 }
 
-fn system_boot_detail(name: &str, args: &[String]) -> String {
+/// True when `ROBONIX_LLM_CATALOG` names a catalog. Pilot resolves its VLM
+/// from that catalog, so the manifest's legacy `vlm.*` fields are optional.
+fn llm_catalog_enabled() -> bool {
+    std::env::var("ROBONIX_LLM_CATALOG")
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+}
+
+fn system_boot_detail(name: &str, args: &[String], llm_catalog: bool) -> String {
     let mut listen: Option<&str> = None;
     let mut vlm_upstream: Option<&str> = None;
     let mut vlm_model: Option<&str> = None;
@@ -2149,6 +2171,15 @@ fn system_boot_detail(name: &str, args: &[String]) -> String {
         .map(|p| format!(":{p}"))
         .unwrap_or_default();
     if name == "pilot" {
+        let capacity = if let Some(tokens) = context_window_tokens {
+            format!("context={tokens} (manual)")
+        } else {
+            "context=auto (Pilot resolves provider metadata; inspect Pilot's context_budget log)"
+                .to_string()
+        };
+        if llm_catalog {
+            return format!("{port}  vlm=catalog  {capacity}");
+        }
         let host = vlm_upstream
             .and_then(|u| {
                 u.trim_start_matches("https://")
@@ -2158,12 +2189,6 @@ fn system_boot_detail(name: &str, args: &[String]) -> String {
             })
             .unwrap_or("?");
         let model = vlm_model.unwrap_or("?");
-        let capacity = if let Some(tokens) = context_window_tokens {
-            format!("context={tokens} (manual)")
-        } else {
-            "context=auto (Pilot resolves provider metadata; inspect Pilot's context_budget log)"
-                .to_string()
-        };
         format!("{port}  vlm={model}@{host}  {capacity}")
     } else {
         port

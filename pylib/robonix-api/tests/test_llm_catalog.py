@@ -68,6 +68,23 @@ class ModelCatalogTests(unittest.TestCase):
                 {"models": [{"id": "x", "provider": "vllm", "base_url": "http://x"}]}
             )
 
+    def test_rejects_non_boolean_features(self):
+        with self.assertRaises(ValueError):
+            ModelCatalog.from_dict(
+                {
+                    "models": [
+                        {
+                            "id": "x",
+                            "provider": "vllm",
+                            "base_url": "http://x",
+                            "model": "x",
+                            "api_key_env": "VLLM_API_KEY",
+                            "features": {"vision": "false"},
+                        }
+                    ]
+                }
+            )
+
     def test_unknown_model_is_an_error(self):
         catalog = ModelCatalog.load(LLM / "catalog.example.yaml")
         with self.assertRaises(ValueError):

@@ -44,7 +44,7 @@ def _png(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
 
 
 def main() -> int:
-    catalog = ModelCatalog.load(ROOT / "catalog.example.yaml")
+    catalog = ModelCatalog.load(ROOT / "robonix_api" / "llm" / "catalog.example.yaml")
     targets = catalog.resolve(
         Requirements(
             features=("vision", "tools"),

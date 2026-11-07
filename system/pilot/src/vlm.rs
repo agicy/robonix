@@ -16,6 +16,7 @@ use async_openai::types::chat::{
     FunctionObjectArgs, ImageDetail, ImageUrl, ResponseFormat, ResponseFormatJsonSchema,
 };
 use futures_util::stream::{Stream, StreamExt};
+use robonix_llm_metrics::{Call, Status, Usage};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -649,6 +650,7 @@ impl VlmClient {
         tools: &[ToolDef],
         prompt_cache_key: Option<&str>,
         reply_shape: ReplyShape,
+        operation: &str,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<VlmStreamItem>> + Send>>> {
         let oai_messages = build_openai_messages(messages)?;
         let oai_tools = build_openai_tools(tools)?;
@@ -692,8 +694,9 @@ impl VlmClient {
         // Optional fields go on the first rejection; the response format can
         // need a second step (see downgrade_response_format).
         let mut compatibility_fallbacks = 0_u8;
+        let mut call = Call::start("pilot", operation, &self.api_base, &self.model, true, None);
         let response = loop {
-            let response = self
+            let sent = self
                 .inner
                 .post(&url)
                 .bearer_auth(&self.api_key)
@@ -701,12 +704,21 @@ impl VlmClient {
                 .header(reqwest::header::CONTENT_TYPE, "application/json")
                 .json(&request_body)
                 .send()
-                .await
-                .context("open VLM chat stream")?;
+                .await;
+            let response = match sent {
+                Ok(response) => response,
+                Err(error) => {
+                    call.finish(Status::TransportError, None);
+                    return Err(error).context("open VLM chat stream");
+                }
+            };
             let status = response.status();
             if status.is_success() {
+                // Until the stream ends, dropping it means the caller gave up.
+                call.finish(Status::Cancelled, Some(status.as_u16()));
                 break response;
             }
+            call.finish(Status::HttpError, Some(status.as_u16()));
             let retry_after = response
                 .headers()
                 .get(reqwest::header::RETRY_AFTER)
@@ -769,6 +781,7 @@ impl VlmClient {
                     );
                 }
                 compatibility_fallbacks += 1;
+                call.retry();
                 continue;
             }
             if let Some(delay) = open_retry_delay(status, retry_after.as_deref(), retry_index) {
@@ -780,6 +793,7 @@ impl VlmClient {
                 );
                 tokio::time::sleep(delay).await;
                 retry_index += 1;
+                call.retry();
                 continue;
             }
             bail!("open VLM chat stream: HTTP {status}: {text}");
@@ -811,13 +825,22 @@ impl VlmClient {
                         buf.extend_from_slice(&bytes);
                         while let Some(pos) = buf.iter().position(|byte| *byte == b'\n') {
                             let line: Vec<u8> = buf.drain(..=pos).collect();
-                            match process_stream_line(&line, &mut tc_acc, &mut finish, &tx).await {
+                            match process_stream_line(
+                                &line,
+                                &mut tc_acc,
+                                &mut finish,
+                                &tx,
+                                &mut call,
+                            )
+                            .await
+                            {
                                 Ok(true) => {
                                     done = true;
                                     break;
                                 }
                                 Ok(false) => {}
                                 Err(e) => {
+                                    call.finish(Status::TransportError, Some(200));
                                     let _ = tx.send(Err(e)).await;
                                     return;
                                 }
@@ -825,6 +848,7 @@ impl VlmClient {
                         }
                     }
                     Err(e) => {
+                        call.finish(Status::TransportError, Some(200));
                         let _ = tx
                             .send(Err(anyhow::anyhow!("VLM stream chunk error: {e}")))
                             .await;
@@ -834,11 +858,16 @@ impl VlmClient {
             }
             if !done
                 && !buf.is_empty()
-                && let Err(e) = process_stream_line(&buf, &mut tc_acc, &mut finish, &tx).await
+                && let Err(e) =
+                    process_stream_line(&buf, &mut tc_acc, &mut finish, &tx, &mut call).await
             {
+                call.finish(Status::TransportError, Some(200));
                 let _ = tx.send(Err(e)).await;
                 return;
             }
+            // The reply is complete; a consumer that stops reading the
+            // remaining items does not make it cancelled.
+            call.finish(Status::Ok, Some(200));
 
             for (_, tc) in tc_acc {
                 if tc.id.is_empty() && tc.name.is_empty() {
@@ -893,6 +922,7 @@ mod tests {
         downgrade_response_format, open_retry_delay, parse_usage, process_stream_line,
         rejects_optional_request_fields, response_format_for,
     };
+    use robonix_llm_metrics::Call;
     use serde_json::json;
     use std::collections::BTreeMap;
     use std::time::Duration;
@@ -1109,6 +1139,7 @@ mod tests {
                 &mut calls,
                 &mut finish,
                 &tx,
+                &mut Call::start("test", "test", "", "", true, None),
             )
             .await
             .unwrap();
@@ -1130,6 +1161,7 @@ mod tests {
             &mut calls,
             &mut finish,
             &tx,
+            &mut Call::start("test", "test", "", "", true, None),
         )
         .await
         .unwrap();
@@ -1195,7 +1227,13 @@ mod tests {
             prompt_cache_key: "local-test".into(),
         };
         let stream = client
-            .chat_stream(&[super::Message::user("test")], &[], None, ReplyShape::Text)
+            .chat_stream(
+                &[super::Message::user("test")],
+                &[],
+                None,
+                ReplyShape::Text,
+                "test",
+            )
             .await
             .unwrap();
         let items = tokio::time::timeout(Duration::from_secs(10), stream.collect::<Vec<_>>())
@@ -1265,6 +1303,7 @@ async fn process_stream_line(
     tc_acc: &mut BTreeMap<u32, AccumulatedToolCall>,
     finish: &mut String,
     tx: &tokio::sync::mpsc::Sender<Result<VlmStreamItem>>,
+    call: &mut Call,
 ) -> Result<bool> {
     let line = std::str::from_utf8(line)
         .context("VLM SSE line contains invalid UTF-8")?
@@ -1282,6 +1321,7 @@ async fn process_stream_line(
 
     let v: Value = serde_json::from_str(data)
         .with_context(|| format!("deserialize VLM stream chunk: {data}"))?;
+    call.observe(&v);
     if let Some(usage) = parse_usage(&v)
         && tx.send(Ok(VlmStreamItem::Usage(usage))).await.is_err()
     {
@@ -1355,25 +1395,14 @@ async fn process_stream_line(
     Ok(false)
 }
 
-/// Read the standard Chat Completions usage shape without requiring every
-/// OpenAI-compatible provider to deserialize optional detail fields equally.
+/// The chunk's usage when it reports both prompt and completion counts.
 fn parse_usage(value: &Value) -> Option<VlmUsage> {
-    let usage = value.get("usage")?.as_object()?;
-    let prompt_tokens = usage.get("prompt_tokens")?.as_u64()?;
-    let completion_tokens = usage.get("completion_tokens")?.as_u64()?;
-    let cached_tokens = usage
-        .get("prompt_tokens_details")
-        .and_then(Value::as_object)
-        .and_then(|details| details.get("cached_tokens"))
-        .and_then(Value::as_u64);
+    let usage = Usage::from_response(value);
     Some(VlmUsage {
-        prompt_tokens,
-        completion_tokens,
-        cached_tokens,
-        model: value
-            .get("model")
-            .and_then(Value::as_str)
-            .map(str::to_string),
+        prompt_tokens: usage.input_tokens?,
+        completion_tokens: usage.output_tokens?,
+        cached_tokens: usage.cached_input_tokens,
+        model: usage.provider_model,
     })
 }
 

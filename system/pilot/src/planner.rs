@@ -1081,7 +1081,7 @@ struct VlmTextCompletion {
 /// compaction ledger. Best-effort: callers keep source history if it fails.
 async fn collect_vlm_text(vlm: &VlmClient, messages: &[Message]) -> Option<VlmTextCompletion> {
     let mut stream = vlm
-        .chat_stream(messages, &[], None, ReplyShape::Text)
+        .chat_stream(messages, &[], None, ReplyShape::Text, "summary")
         .await
         .ok()?;
     let mut text = String::new();
@@ -1573,7 +1573,13 @@ pub async fn run_turn(
         let mut stream = loop {
             match tokio::time::timeout(
                 vlm_idle_timeout(),
-                vlm.chat_stream(&messages, &[], Some(vlm.prompt_cache_key()), reply_shape),
+                vlm.chat_stream(
+                    &messages,
+                    &[],
+                    Some(vlm.prompt_cache_key()),
+                    reply_shape,
+                    "plan",
+                ),
             )
             .await
             .map_err(anyhow::Error::from)

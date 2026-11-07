@@ -204,7 +204,9 @@ fn clean_deploy(
                     output::sub_step(&format!("keep {} (use --cache to wipe)", path.display()));
                     continue;
                 }
-                if name == "sessions" && !also_sessions {
+                // Model usage records are kept with sessions: both are what a
+                // later run or bill is reconstructed from.
+                if (name == "sessions" || name == "llm-metrics") && !also_sessions {
                     output::sub_step(&format!("keep {} (use --sessions to wipe)", path.display()));
                     continue;
                 }

@@ -118,9 +118,12 @@ Next to the lock, `rbnx-boot/logs/` holds each component's log and
 `rbnx-boot/sessions/` holds session state: boot passes it to system
 components as `ROBONIX_SESSION_DIR` (an existing value wins), and Pilot keeps
 each session's transcript there so the session survives a restart. Boot clears
-old log files but never touches `sessions/`. `rbnx clean -f` removes
-everything under `rbnx-boot/` except `cache/` and `sessions/`; pass `--cache`
-or `--sessions` to remove those too.
+old log files but never touches `sessions/`. `rbnx-boot/llm-metrics/` holds
+one JSON line per model request (see `robonix_api.llm`); boot exports it as
+`ROBONIX_LLM_METRICS_DIR` (an existing value wins) and treats it like
+`sessions/`. `rbnx clean -f` removes everything under `rbnx-boot/` except
+`cache/`, `sessions/` and `llm-metrics/`; pass `--cache` or `--sessions` to
+remove those too.
 
 ## Built-in system components
 

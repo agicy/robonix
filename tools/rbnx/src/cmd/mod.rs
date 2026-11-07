@@ -185,7 +185,8 @@ pub enum Commands {
         #[arg(long)]
         cache: bool,
         /// With `-f`, also wipe `rbnx-boot/sessions/` (Pilot session
-        /// transcripts, which restore sessions after a restart).
+        /// transcripts, which restore sessions after a restart) and
+        /// `rbnx-boot/llm-metrics/` (per-request model usage records).
         #[arg(long)]
         sessions: bool,
     },

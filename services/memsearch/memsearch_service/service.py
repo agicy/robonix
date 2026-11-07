@@ -254,10 +254,16 @@ async def compact(msg: Empty) -> String:
         return String(data="compact: no LLM credentials available. "
                            "Set VLM_API_KEY in the deploy manifest's system.memory env block.")
     try:
-        summary_path = await _require_backend().compact(
-            llm_provider="openai", model=model,
-            base_url=base_url, api_key=api_key,
-        )
+        from robonix_api.llm import metrics  # noqa: PLC0415
+
+        # memsearch makes the request itself and does not return usage, so
+        # the record counts the call with unknown tokens.
+        with metrics.Call("memsearch", "compact", base_url or "", model) as call:
+            summary_path = await _require_backend().compact(
+                llm_provider="openai", model=model,
+                base_url=base_url, api_key=api_key,
+            )
+            call.finish()
         log.info("compact done → %s", summary_path)
         return String(data=f"Memory compacted successfully to {summary_path}.")
     except Exception as e:
